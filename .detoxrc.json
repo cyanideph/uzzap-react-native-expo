@@ -1,0 +1,28 @@
+{
+  "testRunner": "jest",
+  "specs": "e2e/**/*.test.ts",
+  "devices": {
+    "android.emu.debug": {
+      "type": "android.emulator",
+      "avdName": "pixel_4_api_34",
+      "binaryPath": "android/app/build/outputs/apk/debug/app-debug.apk"
+    },
+    "ios.sim.debug": {
+      "type": "ios.simulator",
+      "device": {
+        "type": "iPhone 15"
+      },
+      "binaryPath": "ios/build/Build/Products/Debug-iphonesimulator/YourApp.app"
+    }
+  },
+  "apps": {
+    "android.emu.debug": {
+      "type": "android.apk",
+      "binaryPath": "android/app/build/outputs/apk/debug/app-debug.apk"
+    },
+    "ios.sim.debug": {
+      "type": "ios.app",
+      "binaryPath": "ios/build/Build/Products/Debug-iphonesimulator/YourApp.app"
+    }
+  }
+}

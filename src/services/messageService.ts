@@ -35,6 +35,19 @@ export interface SendMessageInput {
   offline?: boolean;
 }
 
+export interface SendMediaInput {
+  recipientId: string;
+  type: 'image' | 'voice' | 'location' | 'file';
+  uri: string;
+  conversationId?: string;
+  mimeType?: string;
+  fileName?: string;
+  duration?: number;
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
+}
+
 function mapWireProtocolToType(protocol: MessageProtocol): MessageType {
   if (protocol === 'sms' || protocol === 'smsr') return 'sms';
   return 'text';
@@ -156,6 +169,63 @@ export class MessageService {
     } catch (error) {
       void this.markFailed(message, error instanceof Error ? error.message : 'send-error');
     }
+  }
+
+  async sendMedia(input: SendMediaInput): Promise<Message> {
+    const now = Math.floor(Date.now() / 1000);
+    const selfId = useUzzapStore.getState().user?.id ?? 'self';
+    const id = uuidv4();
+    const conversationId = input.conversationId ?? input.recipientId;
+
+    await this.ensureConversation(conversationId, input.recipientId, now);
+
+    const meta: Record<string, unknown> = {
+      mediaType: input.type,
+      uri: input.uri,
+      mimeType: input.mimeType,
+      fileName: input.fileName,
+    };
+
+    if (input.duration) meta.duration = input.duration;
+    if (input.latitude !== undefined) meta.latitude = input.latitude;
+    if (input.longitude !== undefined) meta.longitude = input.longitude;
+    if (input.locationName) meta.locationName = input.locationName;
+
+    const online = wsClient.isOnline();
+    const message: Message = {
+      id,
+      conversationId,
+      senderId: selfId,
+      recipientId: input.recipientId,
+      type: input.type,
+      protocol: 'im',
+      content: input.uri,
+      timestamp: now,
+      status: online ? 'sending' : 'pending',
+      receiptRequested: true,
+      offlineQueued: !online,
+      isRead: true,
+      retryCount: 0,
+      meta,
+    };
+
+    const store = useUzzapStore.getState();
+    store.appendMessage(message);
+    await this.persistMessage(message);
+
+    if (!online) {
+      await offlineQueue.enqueue({
+        id,
+        to: input.recipientId,
+        body: input.uri,
+        protocol: message.protocol,
+        meta,
+      });
+      return message;
+    }
+
+    this.dispatchMessage(message);
+    return message;
   }
 
   /* ---------------------------------------------------------------------- */
@@ -443,6 +513,8 @@ export const messageService = new MessageService();
 
 export const sendMessage = (input: SendMessageInput): Promise<Message> =>
   messageService.sendMessage(input);
+export const sendMedia = (input: SendMediaInput): Promise<Message> =>
+  messageService.sendMedia(input);
 export const flushOfflineQueue = (): Promise<number> => messageService.flushOfflineQueue();
 export const retryMessage = (messageId: string): Promise<boolean> =>
   messageService.retryMessage(messageId);

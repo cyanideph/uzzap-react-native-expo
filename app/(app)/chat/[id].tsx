@@ -1,6 +1,8 @@
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActionSheetIOS,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -12,7 +14,8 @@ import {
 } from 'react-native';
 
 import { Screen, TitleBar } from '@/components/ui';
-import { messageService } from '@/services/messageService';
+import { messageService, sendMedia } from '@/services/messageService';
+import { mediaService } from '@/services/mediaService';
 import { useUzzapStore } from '@/store';
 import { useTheme } from '@/theme';
 import type { Message } from '@/types/models';
@@ -47,6 +50,7 @@ export default function ChatScreen(): React.ReactElement {
   );
 
   const [draft, setDraft] = useState('');
+  const [showMediaOptions, setShowMediaOptions] = useState(false);
 
   const messages = storedMessages ?? EMPTY_MESSAGES;
   const data = useMemo(() => [...messages].reverse(), [messages]);
@@ -85,14 +89,86 @@ export default function ChatScreen(): React.ReactElement {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
-    // Echo locally (optimistic, status `sending`), persist to SQLite and hand
-    // off to the transport; `messageService` flips the status to `sent` when
-    // the server ACK arrives, or `failed` + offline-queues on error.
     void messageService
       .sendMessage({ recipientId: id, conversationId: id, content: text })
-      .catch(() => {
-        // `sendMessage` already marks the message failed and queues it offline.
-      });
+      .catch(() => {});
+  };
+
+  const handleMediaSelect = async (
+    type: 'image' | 'voice' | 'location' | 'file',
+  ): Promise<void> => {
+    setShowMediaOptions(false);
+    try {
+      let media;
+      switch (type) {
+        case 'image':
+          media = await mediaService.pickImage();
+          break;
+        case 'voice':
+          await mediaService.startRecording();
+          media = await mediaService.stopRecording();
+          break;
+        case 'location':
+          media = await mediaService.getCurrentLocation();
+          break;
+        case 'file':
+          media = await mediaService.pickFile();
+          break;
+      }
+      if (media) {
+        await sendMedia({
+          recipientId: id,
+          type: media.type as 'image' | 'voice' | 'location' | 'file',
+          uri: media.content,
+          conversationId: id,
+          mimeType: media.meta.mimeType as string,
+          fileName: media.meta.fileName as string,
+          duration: media.meta.duration as number,
+          latitude: media.meta.latitude as number,
+          longitude: media.meta.longitude as number,
+          locationName: media.meta.locationName as string,
+        });
+      }
+    } catch {
+      Alert.alert('Error', `Failed to send ${type}`);
+    }
+  };
+
+  const showMediaActionSheet = (): void => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Photo', 'Camera', 'Voice', 'Location', 'File'],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          switch (buttonIndex) {
+            case 1:
+              handleMediaSelect('image');
+              break;
+            case 2:
+              handleMediaSelect('image');
+              break; // Camera would be separate
+            case 3:
+              handleMediaSelect('voice');
+              break;
+            case 4:
+              handleMediaSelect('location');
+              break;
+            case 5:
+              handleMediaSelect('file');
+              break;
+          }
+        },
+      );
+    } else {
+      setShowMediaOptions(true);
+    }
+  };
+
+  const handleMediaOptionPress = (type: 'image' | 'voice' | 'location' | 'file'): void => {
+    setShowMediaOptions(false);
+    handleMediaSelect(type);
   };
 
   return (
@@ -161,6 +237,39 @@ export default function ChatScreen(): React.ReactElement {
           }}
         />
 
+        {Platform.OS !== 'ios' && showMediaOptions && (
+          <View style={styles.mediaOptionsOverlay}>
+            <View style={styles.mediaOptions}>
+              <Text style={styles.mediaOptionTitle}>Attach</Text>
+              <Pressable onPress={() => handleMediaOptionPress('image')} style={styles.mediaOption}>
+                <Text style={styles.mediaOptionIcon}>📷</Text>
+                <Text style={styles.mediaOptionText}>Photo</Text>
+              </Pressable>
+              <Pressable onPress={() => handleMediaOptionPress('voice')} style={styles.mediaOption}>
+                <Text style={styles.mediaOptionIcon}>🎤</Text>
+                <Text style={styles.mediaOptionText}>Voice</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => handleMediaOptionPress('location')}
+                style={styles.mediaOption}
+              >
+                <Text style={styles.mediaOptionIcon}>📍</Text>
+                <Text style={styles.mediaOptionText}>Location</Text>
+              </Pressable>
+              <Pressable onPress={() => handleMediaOptionPress('file')} style={styles.mediaOption}>
+                <Text style={styles.mediaOptionIcon}>📎</Text>
+                <Text style={styles.mediaOptionText}>File</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setShowMediaOptions(false)}
+                style={styles.mediaOptionCancel}
+              >
+                <Text style={styles.mediaOptionCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
         <View
           style={[
             styles.toolbar,
@@ -170,6 +279,13 @@ export default function ChatScreen(): React.ReactElement {
             },
           ]}
         >
+          <Pressable
+            onPress={showMediaActionSheet}
+            accessibilityRole="button"
+            style={styles.mediaButton}
+          >
+            <Text style={styles.mediaButtonText}>+</Text>
+          </Pressable>
           <TextInput
             value={draft}
             onChangeText={setDraft}
@@ -259,5 +375,76 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
+  },
+  mediaButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#2a2a2a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
+  mediaButtonText: {
+    color: '#FF7A1A',
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 24,
+  },
+  mediaOptionsOverlay: {
+    position: 'absolute',
+    bottom: 60,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    zIndex: 100,
+  },
+  mediaOptions: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#333',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  mediaOptionTitle: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  mediaOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  mediaOptionIcon: {
+    fontSize: 20,
+  },
+  mediaOptionText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  mediaOptionCancel: {
+    marginTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333',
+  },
+  mediaOptionCancelText: {
+    color: '#FF7A1A',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 12,
   },
 });

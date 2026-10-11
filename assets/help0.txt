@@ -1,0 +1,32 @@
+* 1. Uzzap Registration
+
+To register a user account, select the "register a new account" option and enter the following information:
+
+- User ID
+This is a name that identifies you in Uzzap.  Your User ID must be between 6 to 12 characters, and can only consist of numbers and letters.
+
+- Mobile Phone Number
+Number should be in full international format, for example +639205008429.
+
+- First Name
+Enter your first name as it will appear on your profile.
+
+- Last Name
+Enter your last name as it will appear on your profile.
+
+- Email Address
+This is important because if you forget your login details you can have them sent to your email address.
+
+- Password
+Enter your desired password. Password should be at least 6 characters in length.
+
+- Retype password
+Re-enter your password for verification.
+
+* 2.  Logging In
+
+Select "Log In" from the main menu and enter your User ID and Password (these may be filled in or remembered by the system automatically).  You can choose to bypass this step for next time and log straight in when Uzzap starts.  You can also go to Settings on the Main Menu and select Auto Start so that Uzzap will start and log in automatically when your phone starts.
+
+If this is your first time to log in or if you have changed your mobile number, you may be asked to enter a validation pin.  You will be given a chance to confirm your mobile number and change it.  You will also be given an option that allows you to resend the pin if you did not receive it.
+
+Copyright (c) 2007/2008 3rd Brand Pte Ltd. All Rights Reserved.

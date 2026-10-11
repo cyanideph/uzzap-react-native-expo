@@ -1,0 +1,15 @@
+* Battery Saving Mode
+
+To reduce your battery consumption you can:
+
+- Switch your phone to 2G:
+Settings -> Phone -> Network …then select GSM.
+
+3G or UMTS is required for video calls, VoIP calls and high speed internet browsing.
+
+- Ensure your Bluetooth is turned off:
+Settings -> Connection -> Bluetooth
+
+You can also try turning off WiFi when not in use, lowering your screen’s brightness, not using animated wallpapers.
+
+Contact your local Smart Wireless Center for more information or help on changing the settings of your phone.

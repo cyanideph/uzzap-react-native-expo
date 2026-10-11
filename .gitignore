@@ -1,0 +1,46 @@
+# Expo / RN
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+android/
+ios/
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+secrets/
+
+# SQLite
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# OS / editors
+.DS_Store
+*.log
+npm-debug.*
+yarn-error.*
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Build output / caches
+/web-build/
+*.tsbuildinfo
+.cache/
+.metro-cache/
+.eslintcache
+.prettiercache

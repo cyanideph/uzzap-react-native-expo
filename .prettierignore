@@ -1,0 +1,11 @@
+node_modules
+.expo
+dist
+web-build
+android
+ios
+drizzle/migrations
+*.min.js
+package-lock.json
+yarn.lock
+bun.lockb

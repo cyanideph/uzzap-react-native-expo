@@ -132,6 +132,7 @@ export const chatRooms = sqliteTable(
     lastActiveAt: integer('last_active_at'),
     isJoined: integer('is_joined', { mode: 'boolean' }).notNull().default(false),
     myNick: text('my_nick'),
+    unreadCount: integer('unread_count').notNull().default(0),
   },
   (table) => ({
     nameIdx: index('chat_rooms_name_idx').on(table.name),
@@ -149,7 +150,9 @@ export const chatRoomUsers = sqliteTable(
       .references(() => chatRooms.id, { onDelete: 'cascade' }),
     userId: text('user_id').notNull(),
     nick: text('nick').notNull(),
-    role: text('role', { enum: ['moderator', 'participant', 'visitor'] }).notNull().default('participant'),
+    role: text('role', { enum: ['moderator', 'participant', 'visitor'] })
+      .notNull()
+      .default('participant'),
     status: text('status').$type<PresenceStatus>().notNull().default('offline'),
     isSelf: integer('is_self', { mode: 'boolean' }).notNull().default(false),
     joinedAt: integer('joined_at').notNull(),
@@ -176,6 +179,7 @@ export const chatMessages = sqliteTable(
     timestamp: integer('timestamp').notNull(),
     recipientId: text('recipient_id'), // for privatechat
     amazMsgId: text('amaz_msg_id'),
+    isRead: integer('is_read', { mode: 'boolean' }).notNull().default(false),
   },
   (table) => ({
     roomIdx: index('chat_messages_room_idx').on(table.roomId, table.timestamp),

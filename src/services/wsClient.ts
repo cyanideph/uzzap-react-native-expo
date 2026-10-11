@@ -6,6 +6,9 @@ import type {
   ConnectionState,
   DeviceFlags,
   InboundWireMessage,
+  InboundChatMessage,
+  ChatPresenceUpdate,
+  ChatMessageType,
   MessageProtocol,
   Stanza,
 } from '../types/protocol';
@@ -59,6 +62,8 @@ export type WsClientEvent =
   | { type: 'state'; state: ConnectionState }
   | { type: 'stanza'; stanza: Stanza }
   | { type: 'message'; message: InboundWireMessage }
+  | { type: 'chat-message'; message: InboundChatMessage }
+  | { type: 'chat-presence'; presence: ChatPresenceUpdate }
   | { type: 'ack'; messageId: string }
   | { type: 'message-failed'; pending: PendingMessage }
   | { type: 'roster'; stanza: Stanza }
@@ -74,6 +79,8 @@ export interface WsClientCallbacks {
   onConnect?: (host: string, port: number) => void;
   onAuthSuccess?: (mobile?: string) => void;
   onMessage?: (message: InboundWireMessage) => void;
+  onChatMessage?: (message: InboundChatMessage) => void;
+  onChatPresence?: (presence: ChatPresenceUpdate) => void;
   onPresence?: (stanza: Stanza) => void;
   onRoster?: (stanza: Stanza) => void;
   onError?: (error: Error) => void;
@@ -968,6 +975,30 @@ export class WsClient {
       return;
     }
 
+    if (actionName === 'chatuser') {
+      const roomId = keys['iq/vcard/username'] ?? keys['iq/chatuser.room'];
+      const nick = keys['iq/chatuser.nick'] ?? keys['iq/vcard/displayname'];
+      const type = keys['iq/chatuser.type'] ?? 'available';
+      const role = keys['iq/chatuser.role'] as 'moderator' | 'participant' | 'visitor' | undefined;
+      const initial = keys['iq/chatuser.initial'] === 'yes';
+      const fromJid = keys['iq/chatuser.from'] ?? keys['iq/from'];
+      const userId = fromJid?.split('/')[0] ?? roomId ?? 'unknown';
+
+      if (roomId && nick) {
+        const presence: ChatPresenceUpdate = {
+          roomId,
+          userId,
+          nick,
+          type: type === 'unavailable' ? 'unavailable' : 'available',
+          role,
+          initial,
+        };
+        this.dispatch({ type: 'chat-presence', presence });
+        this.callbacks.onChatPresence?.(presence);
+      }
+      return;
+    }
+
     if (this.isPresenceAction(actionName, keys)) {
       this.dispatch({ type: 'presence', stanza });
       return;
@@ -1032,6 +1063,27 @@ export class WsClient {
     const contactUsernames = stanza.arrays['message/contact.username'] ?? [];
     const contactDisplayNames = stanza.arrays['message/contact.displayname'] ?? [];
 
+    // Check if this is a chat protocol message
+    if (protocol === 'chat') {
+      const chatMessage: InboundChatMessage = {
+        roomId: stanza.keys['message/msg.room'] ?? stanza.keys['message.to'] ?? '',
+        from,
+        nick: stanza.keys['message/msg.from'] ?? stanza.keys['message.amaz-display-name'] ?? from,
+        body: stanza.keys['message/body'] ?? '',
+        timestamp,
+        msgId: messageId,
+        type: (stanza.keys['message/msg.type'] as ChatMessageType) ?? 'groupchat',
+        recipient: stanza.keys['message/recipient.username'],
+        isInvite: 'message.amaz-buddy-invite' in stanza.keys,
+      };
+
+      if (messageId && from) this.sendAck(messageId, from);
+      this.lastActivityAt = Date.now();
+      this.dispatch({ type: 'chat-message', message: chatMessage });
+      this.callbacks.onChatMessage?.(chatMessage);
+      return;
+    }
+
     const inbound: InboundWireMessage = {
       from,
       displayName: stanza.keys['message.amaz-display-name'] ?? from,
@@ -1087,6 +1139,10 @@ export class WsClient {
         break; // invoked directly in onReachedOnline
       case 'message':
         break; // invoked directly in handleMessage
+      case 'chat-message':
+        break; // invoked directly in handleMessage
+      case 'chat-presence':
+        break; // invoked directly in handleIq
       case 'presence':
         cb.onPresence?.(event.stanza);
         break;

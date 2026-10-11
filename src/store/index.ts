@@ -7,7 +7,17 @@ import { immer } from 'zustand/middleware/immer';
 
 import { deleteSecureItem, getSecureItem, setSecureJson } from '../storage/secureStorage';
 import { hotKV } from '../storage/mmkv';
-import type { AppSettings, AuthPhase, Buddy, Conversation, Message } from '../types/models';
+import type {
+  AppSettings,
+  AuthPhase,
+  Buddy,
+  Conversation,
+  Message,
+  ChatRoom,
+  ChatRoomUser,
+  ChatMessage,
+  ChatInvite,
+} from '../types/models';
 import type { ConnectionState, PresenceStatus } from '../types/protocol';
 import { createAuthSlice } from './slices/authSlice';
 import type { AuthSlice, AuthTokens, StoredUser } from './slices/authSlice';
@@ -19,18 +29,26 @@ import { createPresenceSlice } from './slices/presenceSlice';
 import type { BuddyPresence, PresenceSlice } from './slices/presenceSlice';
 import { createSettingsSlice } from './slices/settingsSlice';
 import type { SettingsSlice } from './slices/settingsSlice';
+import { createChatRoomsSlice } from './slices/chatRoomsSlice';
+import type { ChatRoomsSlice } from './slices/chatRoomsSlice';
 
 export * from './slices/authSlice';
 export * from './slices/contactsSlice';
 export * from './slices/messagesSlice';
 export * from './slices/settingsSlice';
 export * from './slices/presenceSlice';
+export * from './slices/chatRoomsSlice';
 
 /* -------------------------------------------------------------------------- */
 /* Root state                                                                 */
 /* -------------------------------------------------------------------------- */
 
-export type UzzapState = AuthSlice & ContactsSlice & MessagesSlice & SettingsSlice & PresenceSlice;
+export type UzzapState = AuthSlice &
+  ContactsSlice &
+  MessagesSlice &
+  SettingsSlice &
+  PresenceSlice &
+  ChatRoomsSlice;
 
 /**
  * Slice creator typed against the full root state and the middleware stack
@@ -161,6 +179,7 @@ const createRootState: UzzapSlice<UzzapState> = (...args) => ({
   ...createMessagesSlice(...args),
   ...createSettingsSlice(...args),
   ...createPresenceSlice(...args),
+  ...createChatRoomsSlice(...args),
 });
 
 export const useUzzapStore = create<UzzapState>()(
@@ -222,6 +241,23 @@ export function selectConversation(conversationId: string) {
 
 export function selectConversationMessages(conversationId: string) {
   return (state: UzzapState): Message[] => state.messagesByConversation[conversationId] ?? [];
+}
+
+export function selectChatRoom(roomId: string) {
+  return (state: UzzapState): ChatRoom | undefined => state.chatRooms[roomId];
+}
+
+export function selectChatRoomUsers(roomId: string) {
+  return (state: UzzapState): ChatRoomUser[] =>
+    Object.values(state.chatRoomUsers).filter((u) => u.roomId === roomId);
+}
+
+export function selectChatRoomMessages(roomId: string) {
+  return (state: UzzapState): ChatMessage[] => state.chatMessagesByRoom[roomId] ?? [];
+}
+
+export function selectChatInvites(state: UzzapState): ChatInvite[] {
+  return state.chatInvites;
 }
 
 /** Derived view of the active session, mirroring the legacy `AuthSession`. */

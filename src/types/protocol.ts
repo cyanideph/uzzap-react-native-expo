@@ -140,49 +140,6 @@ export type ConnectionState =
   | 'disconnected';
 
 /* -------------------------------------------------------------------------- */
-/* Chat Room types (spec §9)                                                   */
-/* -------------------------------------------------------------------------- */
-
-export interface ChatRoom {
-  id: string;
-  name: string;
-  type: ChatRoomType;
-  maxUsers: number;
-  passwordProtected: boolean;
-  creatorId?: string;
-  createdAt: number;
-}
-
-export interface ChatRoomGroup {
-  name: string;
-  rooms: ChatRoom[];
-}
-
-export interface ChatUser {
-  userId: string;
-  nick: string;
-  roomId: string;
-  role: 'moderator' | 'participant' | 'visitor';
-  status: PresenceStatus;
-  initial?: boolean;
-}
-
-export interface ChatInvite {
-  roomId: string;
-  from: string;
-  body: string;
-  timestamp: number;
-}
-
-export interface CreateRoomInput {
-  name: string;
-  type: ChatRoomType;
-  password?: string;
-  maxUsers?: number;
-  nick: string;
-}
-
-/* -------------------------------------------------------------------------- */
 /* Flattened stanza model (spec §3.2)                                         */
 /* -------------------------------------------------------------------------- */
 

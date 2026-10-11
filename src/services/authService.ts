@@ -13,6 +13,7 @@ import type { AuthPhase, AuthSession } from '../types/models';
 import type { AuthCredentials, Stanza } from '../types/protocol';
 import { buildIq, newIqId, wsClient } from './wsClient';
 import type { VCardData } from './wsClient';
+import { smsValidationService } from './smsValidationService';
 
 /**
  * Account lifecycle against the legacy registry/validation targets.
@@ -269,6 +270,9 @@ export class AuthService {
     await this.persistCredentials({ username: input.username, password: input.password });
     useUzzapStore.getState().setPhase('needs-pin');
 
+    // Set pending registration so SMS listener knows which user to validate
+    await smsValidationService.setPendingRegistration(input.username);
+
     return { ok: true, phase: 'needs-pin' };
   }
 
@@ -378,6 +382,8 @@ export class AuthService {
     wsClient.disconnect('logout');
     await clearSecureStore();
     useUzzapStore.getState().signOut();
+    // Clear any pending SMS registration
+    await smsValidationService.clearPendingRegistration();
   }
 
   /** Restore a stored session at cold start without a network round-trip. */

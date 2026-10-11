@@ -2,6 +2,7 @@ import type { AppSettings } from '../types/models';
 import { getStoredCredentials } from './authService';
 import { contactService } from './contactService';
 import { messageService } from './messageService';
+import { smsValidationService } from './smsValidationService';
 // Side-effect import: the presence singleton registers the connection-state /
 // disconnect listeners on `wsClient` from its constructor.
 import './presenceService';
@@ -40,6 +41,8 @@ export function bootstrapServices(): Promise<AppSettings | null> {
   if (!servicesPromise) {
     servicesPromise = (async () => {
       pushService.configure();
+      // Start SMS validation listener for registration PIN codes
+      void smsValidationService.startListening();
       return loadSettingsOnce();
     })();
   }

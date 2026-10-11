@@ -193,7 +193,6 @@ export function FunctionBar({
   leftDisabled,
   rightDisabled,
 }: FunctionBarProps): React.ReactElement {
-  const { theme } = useTheme();
   return (
     <View
       style={[

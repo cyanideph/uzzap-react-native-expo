@@ -11,11 +11,9 @@ config.resolver.sourceExts.push('sql');
 config.resolver.sourceExts.push('cjs');
 config.resolver.unstable_enablePackageExports = false;
 
-// Build performance: persistent filesystem cache + in-memory cache
-config.cacheStores = [
-  { name: 'memory', maxSize: 100 * 1024 * 1024 }, // 100MB in-memory
-  { name: 'filesystem', root: '.metro-cache', maxSize: 500 * 1024 * 1024 }, // 500MB on disk
-];
+// Keep Expo/Metro's built-in cache stores. Metro requires CacheStore
+// implementations with get/set/clear methods; plain configuration objects
+// cause `TypeError: store.get is not a function` during bundle export.
 
 // Faster minification
 config.transformer.minifierConfig = {

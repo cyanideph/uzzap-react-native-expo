@@ -2,62 +2,66 @@ import { createTheme } from './createTheme';
 import type { ThemeColors, ThemeTokens } from './tokens';
 
 /**
- * Default theme — the MIDP "silver / steel-blue Java phone" look.
+ * Default MIDP system theme.
  *
- * Reconstructed from `JAVAUZZAP_UI_UX_SPEC.md` §2.2 (Default) plus the legacy
- * fallbacks documented for `themes/default/theme.ini` (which ships empty):
- * menu selected #B6B6B6, title/function bar text #FFFFFF, main-menu text bar
- * #DFDFDF, scrollbar #868686 on #DFDFDF.
+ * Source-backed mappings from the original `themes/default/theme.ini`:
+ * selected menu #B6B6B6; main-menu bar #DFDFDF; scrollbar fill #868686 and
+ * track #DFDFDF; text #000000; special/other-special #AF0C0D / #0D0CAF;
+ * tabbed/popup background #FFFFFF; title/function bar text #FFFFFF.
+ *
+ * The original titlebar/functionbar image slices are rendered by the shared
+ * chrome components. Presence and message-status semantics not specified by
+ * the INI remain compatibility choices, not historical source values.
  */
 export const defaultColors: ThemeColors = {
   brand: {
-    primary: '#4A6FA5',
-    primaryDark: '#33507E',
-    primaryLight: '#8FB0DE',
-    onPrimary: '#FFFFFF',
-    ink: '#1E2E45',
-    sentBubble: '#DCE7F5',
-    sentBubbleText: '#0A0F18',
+    primary: '#868686',
+    primaryDark: '#666666',
+    primaryLight: '#B6B6B6',
+    onPrimary: '#000000',
+    ink: '#000000',
+    sentBubble: '#DFDFDF',
+    sentBubbleText: '#000000',
   },
   chrome: {
-    ink: '#0A0F18',
-    bg: '#3E5C82',
-    bgAlt: '#33507E',
-    bevelHi: '#7FA0CC',
-    bevelLo: '#1E2E45',
+    ink: '#000000',
+    bg: '#DFDFDF',
+    bgAlt: '#868686',
+    bevelHi: '#FFFFFF',
+    bevelLo: '#868686',
     text: '#FFFFFF',
   },
   surface: {
     base: '#FFFFFF',
-    alt: '#EAF0F8',
-    raised: '#F7FAFD',
-    overlay: '#0A0F18',
-    pattern: '#3E5C82',
+    alt: '#DFDFDF',
+    raised: '#FFFFFF',
+    overlay: '#000000',
+    pattern: '#FFFFFF',
   },
   text: {
-    primary: '#0A0F18',
-    secondary: '#5B6472',
-    disabled: '#9AA3B2',
+    primary: '#000000',
+    secondary: '#404040',
+    disabled: '#808080',
     inverse: '#FFFFFF',
     link: '#0D0CAF',
     error: '#AF0C0D',
     success: '#008000',
-    warning: '#FF8C00',
+    warning: '#AF0C0D',
     special: '#AF0C0D',
     otherSpecial: '#0D0CAF',
   },
   border: {
-    divider: '#D9DEE7',
+    divider: '#DFDFDF',
     input: '#868686',
-    inputFocus: '#4A6FA5',
-    focusRing: '#8FB0DE',
+    inputFocus: '#868686',
+    focusRing: '#B6B6B6',
   },
-  focus: '#8FB0DE',
+  focus: '#B6B6B6',
   presence: {
     online: '#008000',
-    away: '#FF8C00',
+    away: '#B6B6B6',
     busy: '#AF0C0D',
-    invisible: '#8A93A2',
+    invisible: '#868686',
     offline: '#868686',
   },
   status: {
@@ -65,22 +69,22 @@ export const defaultColors: ThemeColors = {
     sending: '#868686',
     sent: '#868686',
     delivered: '#868686',
-    read: '#3366CC',
+    read: '#0D0CAF',
     failed: '#AF0C0D',
   },
   semantic: {
     danger: '#AF0C0D',
-    unreadBadge: '#D0021B',
+    unreadBadge: '#AF0C0D',
     selectedBg: '#B6B6B6',
-    selectedText: '#FFFFFF',
+    selectedText: '#000000',
     menuBarBg: '#DFDFDF',
     menuBarText: '#000000',
     scrollbarFill: '#868686',
     scrollbarTrack: '#DFDFDF',
     imHeader: '#AF0C0D',
     imRecipients: '#0D0CAF',
-    bubbleIn: '#EAF0F8',
-    bubbleInText: '#0A0F18',
+    bubbleIn: '#FFFFFF',
+    bubbleInText: '#000000',
   },
 };
 

@@ -12,6 +12,7 @@ import type { InboundWireMessage, MessageProtocol } from '../types/protocol';
 import { offlineQueue } from './offlineQueue';
 import type { PendingMessage } from './wsClient';
 import { wsClient } from './wsClient';
+import { pushService } from './pushService';
 
 /**
  * Message send/receive orchestration.
@@ -272,6 +273,19 @@ export class MessageService {
 
     useUzzapStore.getState().appendMessage(message);
     await this.persistMessage(message);
+
+    // Schedule local push notification if conversation is not active
+    const activeConversationId = useUzzapStore.getState().activeConversationId;
+    if (activeConversationId !== conversationId) {
+      const buddy = useUzzapStore.getState().buddies[wire.from];
+      const displayName = buddy?.displayName ?? wire.displayName ?? wire.from;
+      void pushService.scheduleLocalNotification(displayName, wire.body, {
+        conversationId,
+        messageId: id,
+        type: 'message',
+      });
+    }
+
     return message;
   }
 

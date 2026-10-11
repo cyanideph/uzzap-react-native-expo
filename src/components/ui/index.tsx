@@ -29,7 +29,7 @@ import { useTheme } from '../../theme';
 export interface ScreenProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
-  edges?: Array<'top' | 'right' | 'bottom' | 'left'>;
+  edges?: ('top' | 'right' | 'bottom' | 'left')[];
   padded?: boolean;
 }
 
@@ -532,19 +532,158 @@ export function ProgressBar({ value }: { value: number }): React.ReactElement {
   );
 }
 
-export interface EmptyStateProps {
+/* -------------------------------------------------------------------------- */
+/* Alert Dialog                                                               */
+/* -------------------------------------------------------------------------- */
+
+export interface AlertDialogProps {
+  visible: boolean;
+  onClose: () => void;
   title: string;
-  message?: string;
-  actionLabel?: string;
-  onAction?: () => void;
+  content: React.ReactNode;
+  actions: { text: string; onPress: () => void; variant?: 'primary' | 'secondary' | 'danger' }[];
 }
+
+export function AlertDialog({
+  visible,
+  onClose,
+  title,
+  content,
+  actions,
+}: AlertDialogProps): React.ReactElement | null {
+  const { theme } = useTheme();
+  if (!visible) return null;
+  return (
+    <View style={styles.alertOverlay} onStartShouldSetResponder={() => true}>
+      <View style={styles.alertContainer}>
+        <Text style={styles.alertTitle}>{title}</Text>
+        {content}
+        <View style={styles.alertActions}>
+          {actions.map((action, index) => (
+            <AppButton
+              key={index}
+              label={action.text}
+              onPress={() => {
+                action.onPress();
+                onClose();
+              }}
+              variant={action.variant ?? 'primary'}
+              fullWidth={false}
+              style={styles.alertAction}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* App Input                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface AppInputProps {
+  label?: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  secureTextEntry?: boolean;
+  keyboardType?: 'default' | 'numeric' | 'phone-pad' | 'email-address';
+  autoFocus?: boolean;
+  error?: string | null;
+  style?: StyleProp<ViewStyle>;
+}
+
+export function AppInput({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  secureTextEntry,
+  keyboardType,
+  autoFocus,
+  error,
+  style,
+}: AppInputProps): React.ReactElement {
+  const { theme } = useTheme();
+  const [focused, setFocused] = React.useState(false);
+  const hasError = Boolean(error);
+  const borderColor = hasError
+    ? theme.colors.text.error
+    : focused
+      ? theme.colors.border.inputFocus
+      : theme.colors.border.input;
+
+  return (
+    <View style={[{ marginBottom: theme.space.md }, style]}>
+      {label ? (
+        <Text
+          style={{
+            color: theme.colors.text.secondary,
+            fontSize: theme.typography.size.sm,
+            marginBottom: theme.space.xs,
+          }}
+        >
+          {label}
+        </Text>
+      ) : null}
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={theme.colors.text.disabled}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType}
+        autoFocus={autoFocus}
+        style={[
+          {
+            height: theme.layout.inputHeight,
+            borderRadius: theme.radius.card,
+            borderWidth: theme.stroke.hairline,
+            borderColor,
+            paddingHorizontal: theme.space.md,
+            color: theme.colors.text.primary,
+            backgroundColor: theme.colors.surface.base,
+            fontSize: theme.typography.size.body,
+          },
+        ]}
+        onFocus={(event) => {
+          setFocused(true);
+        }}
+        onBlur={() => {
+          setFocused(false);
+        }}
+      />
+      {error ? (
+        <Text
+          style={{
+            color: theme.colors.text.error,
+            fontSize: theme.typography.size.xs,
+            marginTop: theme.space.xs,
+          }}
+        >
+          {error}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Empty State                                                                */
+/* -------------------------------------------------------------------------- */
 
 export function EmptyState({
   title,
   message,
   actionLabel,
   onAction,
-}: EmptyStateProps): React.ReactElement {
+}: {
+  title: string;
+  message?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}): React.ReactElement {
   const { theme } = useTheme();
   return (
     <View style={styles.emptyWrap}>
@@ -647,5 +786,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
+  },
+  alertOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  alertContainer: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 20,
+    width: '100%',
+    maxWidth: 320,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#333',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  alertTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  alertActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 16,
+  },
+  alertAction: {
+    minWidth: 80,
   },
 });

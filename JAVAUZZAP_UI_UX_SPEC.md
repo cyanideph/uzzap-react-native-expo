@@ -48,10 +48,12 @@ These are configuration values, not a complete pixel measurement of every screen
 
 The clone keeps the soul of a 2007 J2ME messenger — square chrome, hard 1 px bevels, a two-softkey function bar, a pixel-accented title bar, presence dots, arrow-based delivery ticks — and folds it into modern RN ergonomics (44 dp touch targets, safe-area awareness, 60 fps transitions, dynamic type). The chrome is **retro and flat and proud of it**; only the _content surfaces_ soften (cards, bubbles, sheets). This tension is the whole aesthetic — do not sand down the chrome to "modern material" or it stops being Uzzap.
 
-Two shipped themes:
+Two source themes are present:
 
-- **Uzzap** (brand): orange on charcoal, pinstripe title bar.
-- **Default** (MIDP system): the silver/steel-blue Java-phone look.
+- **Uzzap / Reptilian**: use the original lime-green, black, and near-white values from `themes/uzzap/theme.ini`, with the original titlebar/functionbar PNG slices as the visual authority.
+- **Default**: use the independent values and assets from `themes/default/theme.ini`.
+
+The orange/charcoal and silver/steel-blue values in the tables below are legacy reconstructed proposals from v1.0. They are not source-extracted values and must not override the original INI or PNG assets. The current palette implementation has been corrected for source-backed Reptilian values; remaining token mappings still require screen-by-screen verification.
 
 ### 1.1 Color palette
 

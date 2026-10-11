@@ -69,7 +69,21 @@ export default function ContactsScreen(): React.ReactElement {
 
   return (
     <Screen edges={['top']}>
-      <TitleBar title="UZZAP" subtitle={`${onlineCount} online`} />
+      <TitleBar
+        title="UZZAP"
+        subtitle={`${onlineCount} online`}
+        right={
+          <Pressable
+            onPress={() => router.push('/contacts/add')}
+            accessibilityRole="button"
+            accessibilityLabel="Add buddy"
+            hitSlop={8}
+            style={{ paddingHorizontal: 8, paddingVertical: 2 }}
+          >
+            <Text style={{ color: theme.colors.chrome.text, fontSize: 24, lineHeight: 28 }}>+</Text>
+          </Pressable>
+        }
+      />
       {Object.keys(buddies).length === 0 ? (
         <EmptyState
           title="No buddies yet"

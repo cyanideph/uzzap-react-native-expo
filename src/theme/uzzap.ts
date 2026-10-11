@@ -2,92 +2,98 @@ import { createTheme } from './createTheme';
 import type { ThemeColors, ThemeTokens } from './tokens';
 
 /**
- * Uzzap brand theme — orange on charcoal.
+ * Uzzap / Reptilian skin.
  *
- * Reconstructed from `JAVAUZZAP_UI_UX_SPEC.md` §2.1 (brand) and §1.1 (chrome,
- * content surfaces, presence, status). Exact spec values:
+ * Values below are mapped from the source file
+ * `assets/themes/uzzap/theme.ini` in the original JavaUzzap repository.
+ * That INI defines content/text colors and font sizes; the original titlebar,
+ * functionbar, background and icon PNGs remain the authority for image chrome.
  *
- *   brand   primary #FF7A1A · primaryDark #D95E00 · primaryLight #FFA24D
- *   chrome  ink #14161A · bg #1E2228 · bevelHi #3A4048 · bevelLo #05070A · text #F5F7FA
- *   surface base #FFFFFF · alt #F2F4F7
- *   text    primary #0E1116 · secondary #5B6472 · disabled #9AA3B2
- *   border  divider #E3E7EE · focus #FFA24D
- *   presence online #2EE06A · away #FFB020 · busy #FF4D4F · invisible #8A93A2 · offline #C3C9D4
- *   status  sent/delivered #8A93A2 · read #22A7F0
- *   danger  #E5484D · unread badge #FF3B30
+ * Exact source values mapped here:
+ * - selected menu: #C0FD85
+ * - main-menu text bar / scrollbar fill: #8EEF04
+ * - scrollbar background: #05741D
+ * - text-view text: #000000
+ * - special / other-special text: #AF0C0D / #0D0CAF
+ * - tabbed panel / popup background: #F9F9F9
+ * - titlebar / functionbar text: #000000
+ *
+ * Status colors and modern message-bubble semantics are not specified by the
+ * original INI and remain compatibility choices until source screens are
+ * mapped and compared. Do not describe those as extracted source values.
  */
 export const uzzapColors: ThemeColors = {
   brand: {
-    primary: '#FF7A1A',
-    primaryDark: '#D95E00',
-    primaryLight: '#FFA24D',
-    onPrimary: '#14161A',
-    ink: '#14161A',
-    sentBubble: '#FFE7D6',
-    sentBubbleText: '#0E1116',
+    primary: '#8EEF04',
+    primaryDark: '#05741D',
+    primaryLight: '#C0FD85',
+    onPrimary: '#000000',
+    ink: '#000000',
+    sentBubble: '#C0FD85',
+    sentBubbleText: '#000000',
   },
   chrome: {
-    ink: '#14161A',
-    bg: '#1E2228',
-    bgAlt: '#14161A',
-    bevelHi: '#3A4048',
-    bevelLo: '#05070A',
-    text: '#F5F7FA',
+    ink: '#000000',
+    bg: '#8EEF04',
+    bgAlt: '#05741D',
+    bevelHi: '#C0FD85',
+    bevelLo: '#05741D',
+    text: '#000000',
   },
   surface: {
-    base: '#FFFFFF',
-    alt: '#F2F4F7',
+    base: '#F9F9F9',
+    alt: '#FFFFFF',
     raised: '#FFFFFF',
-    overlay: '#05070A',
-    pattern: '#14161A',
+    overlay: '#000000',
+    pattern: '#F9F9F9',
   },
   text: {
-    primary: '#0E1116',
-    secondary: '#5B6472',
-    disabled: '#9AA3B2',
-    inverse: '#F5F7FA',
-    link: '#D95E00',
-    error: '#E5484D',
-    success: '#2EE06A',
-    warning: '#FFB020',
-    special: '#FF7A1A',
-    otherSpecial: '#FFA24D',
+    primary: '#000000',
+    secondary: '#333333',
+    disabled: '#808080',
+    inverse: '#FFFFFF',
+    link: '#0D0CAF',
+    error: '#AF0C0D',
+    success: '#05741D',
+    warning: '#AF0C0D',
+    special: '#AF0C0D',
+    otherSpecial: '#0D0CAF',
   },
   border: {
-    divider: '#E3E7EE',
-    input: '#9AA3B2',
-    inputFocus: '#FFA24D',
-    focusRing: '#FFA24D',
+    divider: '#C0C0C0',
+    input: '#808080',
+    inputFocus: '#05741D',
+    focusRing: '#05741D',
   },
-  focus: '#FFA24D',
+  focus: '#05741D',
   presence: {
-    online: '#2EE06A',
-    away: '#FFB020',
-    busy: '#FF4D4F',
-    invisible: '#8A93A2',
-    offline: '#C3C9D4',
+    online: '#05741D',
+    away: '#8EEF04',
+    busy: '#AF0C0D',
+    invisible: '#808080',
+    offline: '#C0C0C0',
   },
   status: {
-    pending: '#8A93A2',
-    sending: '#8A93A2',
-    sent: '#8A93A2',
-    delivered: '#8A93A2',
-    read: '#22A7F0',
-    failed: '#E5484D',
+    pending: '#808080',
+    sending: '#808080',
+    sent: '#808080',
+    delivered: '#808080',
+    read: '#0D0CAF',
+    failed: '#AF0C0D',
   },
   semantic: {
-    danger: '#E5484D',
-    unreadBadge: '#FF3B30',
-    selectedBg: '#FFF0E4',
-    selectedText: '#14161A',
-    menuBarBg: '#1E2228',
-    menuBarText: '#F5F7FA',
-    scrollbarFill: '#FF7A1A',
-    scrollbarTrack: '#14161A',
-    imHeader: '#FF7A1A',
-    imRecipients: '#FFA24D',
-    bubbleIn: '#F2F4F7',
-    bubbleInText: '#0E1116',
+    danger: '#AF0C0D',
+    unreadBadge: '#AF0C0D',
+    selectedBg: '#C0FD85',
+    selectedText: '#000000',
+    menuBarBg: '#8EEF04',
+    menuBarText: '#000000',
+    scrollbarFill: '#8EEF04',
+    scrollbarTrack: '#05741D',
+    imHeader: '#AF0C0D',
+    imRecipients: '#0D0CAF',
+    bubbleIn: '#FFFFFF',
+    bubbleInText: '#000000',
   },
 };
 

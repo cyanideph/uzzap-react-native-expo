@@ -71,8 +71,9 @@ export default function AppLayout(): React.ReactElement {
       <Tabs.Screen name="chat" options={tabOptions('chat')} />
       <Tabs.Screen name="settings" options={tabOptions('settings')} />
       <Tabs.Screen name="help" options={tabOptions('help')} />
-      {/* Thread screen: registered in the tab navigator but not shown as a tab. */}
-      <Tabs.Screen name="chat/[id]" options={{ href: null }} />
+      {/* Detail routes are hidden from the tab bar and use the full screen. */}
+      <Tabs.Screen name="chat/[id]" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="contacts/add" options={{ href: null, tabBarStyle: { display: 'none' } }} />
     </Tabs>
   );
 }

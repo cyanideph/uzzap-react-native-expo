@@ -67,7 +67,7 @@ export interface TitleBarProps {
 }
 
 export function TitleBar({ title, subtitle, right, onBack }: TitleBarProps): React.ReactElement {
-  const { theme } = useTheme();
+  const { theme, brand } = useTheme();
   return (
     <View
       style={[
@@ -83,19 +83,19 @@ export function TitleBar({ title, subtitle, right, onBack }: TitleBarProps): Rea
       ]}
     >
       <Image
-        source={require('../../../assets/themes/uzzap/titlebar-left.png')}
+        source={brand === 'default' ? require('../../../assets/themes/default/titlebar-left.png') : require('../../../assets/themes/uzzap/titlebar-left.png')}
         resizeMode="stretch"
         accessible={false}
         style={styles.chromeSliceLeft}
       />
       <Image
-        source={require('../../../assets/themes/uzzap/titlebar-middle.png')}
+        source={brand === 'default' ? require('../../../assets/themes/default/titlebar-middle.png') : require('../../../assets/themes/uzzap/titlebar-middle.png')}
         resizeMode="stretch"
         accessible={false}
         style={styles.chromeSliceMiddle}
       />
       <Image
-        source={require('../../../assets/themes/uzzap/titlebar-right.png')}
+        source={brand === 'default' ? require('../../../assets/themes/default/titlebar-right.png') : require('../../../assets/themes/uzzap/titlebar-right.png')}
         resizeMode="stretch"
         accessible={false}
         style={styles.chromeSliceRight}
@@ -193,6 +193,7 @@ export function FunctionBar({
   leftDisabled,
   rightDisabled,
 }: FunctionBarProps): React.ReactElement {
+  const { brand } = useTheme();
   return (
     <View
       style={[
@@ -209,19 +210,19 @@ export function FunctionBar({
       ]}
     >
       <Image
-        source={require('../../../assets/themes/uzzap/functionbar-left.png')}
+        source={brand === 'default' ? require('../../../assets/themes/default/functionbar-left.png') : require('../../../assets/themes/uzzap/functionbar-left.png')}
         resizeMode="stretch"
         accessible={false}
         style={styles.chromeSliceLeft}
       />
       <Image
-        source={require('../../../assets/themes/uzzap/functionbar-middle.png')}
+        source={brand === 'default' ? require('../../../assets/themes/default/functionbar-middle.png') : require('../../../assets/themes/uzzap/functionbar-middle.png')}
         resizeMode="stretch"
         accessible={false}
         style={styles.chromeSliceMiddle}
       />
       <Image
-        source={require('../../../assets/themes/uzzap/functionbar-right.png')}
+        source={brand === 'default' ? require('../../../assets/themes/default/functionbar-right.png') : require('../../../assets/themes/uzzap/functionbar-right.png')}
         resizeMode="stretch"
         accessible={false}
         style={styles.chromeSliceRight}

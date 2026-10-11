@@ -173,6 +173,10 @@ export default function SettingsScreen(): React.ReactElement {
           description="Deliver messages by SMS when offline"
           right={switchRow(settings.smsFallback, (next) => updateSettings({ smsFallback: next }))}
         />
+        <SettingRow
+          label="Blocked users"
+          onPress={() => router.push('/settings/blocked')}
+        />
 
         <SectionHeader title="THEME" />
         {THEME_OPTIONS.map((option) => (

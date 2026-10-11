@@ -92,6 +92,24 @@ export type RegistryAction =
   | 'logout'
   | 'status-update';
 
+/** Chat room action names (spec §9). */
+export type ChatRoomAction =
+  | 'query-ug'
+  | 'query-groups'
+  | 'query-group'
+  | 'chatuser'
+  | 'create-room'
+  | 'invite'
+  | 'leave'
+  | 'whisper'
+  | 'msg';
+
+/** Chat room types. */
+export type ChatRoomType = 'private' | 'generated' | 'system';
+
+/** Chat room message types. */
+export type ChatMessageType = 'groupchat' | 'privatechat' | 'invite';
+
 /* -------------------------------------------------------------------------- */
 /* Enums                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -120,6 +138,49 @@ export type ConnectionState =
   | 'disabled'
   | 'failed-connect'
   | 'disconnected';
+
+/* -------------------------------------------------------------------------- */
+/* Chat Room types (spec §9)                                                   */
+/* -------------------------------------------------------------------------- */
+
+export interface ChatRoom {
+  id: string;
+  name: string;
+  type: ChatRoomType;
+  maxUsers: number;
+  passwordProtected: boolean;
+  creatorId?: string;
+  createdAt: number;
+}
+
+export interface ChatRoomGroup {
+  name: string;
+  rooms: ChatRoom[];
+}
+
+export interface ChatUser {
+  userId: string;
+  nick: string;
+  roomId: string;
+  role: 'moderator' | 'participant' | 'visitor';
+  status: PresenceStatus;
+  initial?: boolean;
+}
+
+export interface ChatInvite {
+  roomId: string;
+  from: string;
+  body: string;
+  timestamp: number;
+}
+
+export interface CreateRoomInput {
+  name: string;
+  type: ChatRoomType;
+  password?: string;
+  maxUsers?: number;
+  nick: string;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Flattened stanza model (spec §3.2)                                         */
@@ -254,6 +315,29 @@ export interface InboundWireMessage {
   contacts: { username: string; displayname?: string }[];
 }
 
+/** Inbound chat room message (spec §9). */
+export interface InboundChatMessage {
+  roomId: string;
+  from: string;
+  nick: string;
+  body: string;
+  timestamp: number;
+  msgId: string;
+  type: ChatMessageType;
+  recipient?: string; // for privatechat
+  isInvite: boolean;
+}
+
+/** Chat room presence update. */
+export interface ChatPresenceUpdate {
+  roomId: string;
+  userId: string;
+  nick: string;
+  type: 'available' | 'unavailable';
+  role?: 'moderator' | 'participant' | 'visitor';
+  initial?: boolean;
+}
+
 /** Outbound `<message>` builder input (spec §5.3). */
 export interface OutboundWireMessage {
   to: string;
@@ -263,4 +347,13 @@ export interface OutboundWireMessage {
   location?: string;
   displayName?: string;
   buddyInvite?: boolean;
+}
+
+/** Outbound chat room message (spec §9). */
+export interface OutboundChatMessage {
+  roomId: string;
+  body: string;
+  msgId?: string;
+  type?: ChatMessageType;
+  recipient?: string; // for whisper
 }

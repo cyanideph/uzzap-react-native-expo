@@ -1,4 +1,4 @@
-import type { MessageProtocol, PresenceStatus } from './protocol';
+import type { MessageProtocol, PresenceStatus, ChatRoomType, ChatMessageType } from './protocol';
 
 export type MessageType = 'text' | 'sms' | 'esms' | 'contact' | 'system' | 'image' | 'location';
 
@@ -65,6 +65,64 @@ export interface Conversation {
   isPinned: boolean;
   draftText?: string;
   updatedAt: number;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Chat Room types                                                            */
+/* -------------------------------------------------------------------------- */
+
+export interface ChatRoom {
+  id: string;
+  name: string;
+  type: ChatRoomType;
+  maxUsers: number;
+  passwordProtected: boolean;
+  creatorId?: string;
+  createdAt: number;
+  lastActiveAt?: number;
+  isJoined: boolean;
+  myNick?: string;
+  unreadCount: number;
+}
+
+export interface ChatRoomUser {
+  userId: string;
+  roomId: string;
+  nick: string;
+  role: 'moderator' | 'participant' | 'visitor';
+  status: PresenceStatus;
+  isSelf: boolean;
+  joinedAt: number;
+  lastSeen?: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  roomId: string;
+  senderId: string;
+  senderNick: string;
+  type: ChatMessageType;
+  content: string;
+  timestamp: number;
+  recipientId?: string; // for privatechat
+  amazMsgId?: string;
+  isRead: boolean;
+  status: MessageStatus;
+}
+
+export interface CreateRoomInput {
+  name: string;
+  type: ChatRoomType;
+  password?: string;
+  maxUsers?: number;
+  nick: string;
+}
+
+export interface ChatInvite {
+  roomId: string;
+  from: string;
+  body: string;
+  timestamp: number;
 }
 
 export interface AppSettings {

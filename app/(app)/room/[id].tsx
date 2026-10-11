@@ -1,6 +1,7 @@
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -12,7 +13,13 @@ import {
 } from 'react-native';
 
 import { Screen, TitleBar } from '@/components/ui';
-import { chatRoomService } from '@/services/chatRoomService';
+import {
+  chatRoomService,
+  kickChatRoomUser,
+  banChatRoomUser,
+  setChatRoomUserRole,
+  setChatRoomTopic,
+} from '@/services/chatRoomService';
 import { useUzzapStore } from '@/store';
 import { useTheme } from '@/theme';
 import type { ChatMessage, ChatRoomUser } from '@/types/models';
@@ -46,6 +53,9 @@ export default function RoomChatScreen(): React.ReactElement {
 
   const [draft, setDraft] = useState('');
   const [showUsers, setShowUsers] = useState(false);
+  const [adminTargetUser, setAdminTargetUser] = useState<ChatRoomUser | null>(null);
+  const [showAdminSheet, setShowAdminSheet] = useState(false);
+  const [roomTopic, setRoomTopic] = useState('');
 
   const messages = storedMessages ?? EMPTY_MESSAGES;
   const data = useMemo(() => [...messages].reverse(), [messages]);
@@ -80,8 +90,59 @@ export default function RoomChatScreen(): React.ReactElement {
     void chatRoomService.sendMessage({ roomId: id, body: text }).catch(() => {});
   };
 
-  const handleUserPress = (_user: ChatRoomUser): void => {
-    // Could show user profile or whisper
+  const handleKick = async (): Promise<void> => {
+    if (!adminTargetUser || !id) return;
+    setShowAdminSheet(false);
+    try {
+      await kickChatRoomUser(id, adminTargetUser.userId, 'Kicked by moderator');
+      Alert.alert('Success', 'User kicked');
+    } catch {
+      Alert.alert('Error', 'Failed to kick user');
+    }
+  };
+
+  const handleBan = async (): Promise<void> => {
+    if (!adminTargetUser || !id) return;
+    setShowAdminSheet(false);
+    try {
+      await banChatRoomUser(id, adminTargetUser.userId, 'Banned by moderator');
+      Alert.alert('Success', 'User banned');
+    } catch {
+      Alert.alert('Error', 'Failed to ban user');
+    }
+  };
+
+  const handlePromote = async (): Promise<void> => {
+    if (!adminTargetUser || !id) return;
+    setShowAdminSheet(false);
+    const newRole = adminTargetUser.role === 'moderator' ? 'participant' : 'moderator';
+    try {
+      await setChatRoomUserRole(id, adminTargetUser.userId, newRole);
+      Alert.alert(
+        'Success',
+        `User ${newRole === 'moderator' ? 'promoted to' : 'demoted from'} moderator`,
+      );
+    } catch {
+      Alert.alert('Error', 'Failed to change role');
+    }
+  };
+
+  const handleTopicChange = async (): Promise<void> => {
+    if (!roomTopic.trim() || !id) return;
+    setShowAdminSheet(false);
+    try {
+      await setChatRoomTopic(id, roomTopic);
+      Alert.alert('Success', 'Room topic updated');
+    } catch {
+      Alert.alert('Error', 'Failed to update topic');
+    }
+  };
+
+  const handleUserPress = (user: ChatRoomUser): void => {
+    if (myUser?.role === 'moderator' && user.userId !== selfId) {
+      setAdminTargetUser(user);
+      setShowAdminSheet(true);
+    }
   };
 
   return (
@@ -104,7 +165,16 @@ export default function RoomChatScreen(): React.ReactElement {
             data={users}
             keyExtractor={(item) => `${item.userId}:${item.roomId}`}
             renderItem={({ item }) => (
-              <Pressable onPress={() => handleUserPress(item)} style={styles.userRow}>
+              <Pressable
+                onPress={() => handleUserPress(item)}
+                onLongPress={() => {
+                  if (myUser?.role === 'moderator' && item.userId !== selfId) {
+                    setAdminTargetUser(item);
+                    setShowAdminSheet(true);
+                  }
+                }}
+                style={styles.userRow}
+              >
                 <View style={styles.userAvatar}>
                   <Text style={styles.userInitial}>
                     {(item.nick.charAt(0) || '?').toUpperCase()}
@@ -125,6 +195,65 @@ export default function RoomChatScreen(): React.ReactElement {
           />
         </View>
       )}
+
+      {showAdminSheet && adminTargetUser && (
+        <View style={styles.adminSheetOverlay}>
+          <View style={styles.adminSheet}>
+            <Text style={styles.adminSheetTitle}>Admin: {adminTargetUser.nick}</Text>
+            <Text style={styles.adminSheetSubtitle}>
+              Role: {adminTargetUser.role} • Status: {adminTargetUser.status}
+            </Text>
+            <Pressable onPress={handleKick} style={styles.adminSheetItem}>
+              <Text style={styles.adminSheetItemIcon}>👢</Text>
+              <Text style={styles.adminSheetItemText}>Kick User</Text>
+            </Pressable>
+            <Pressable onPress={handleBan} style={styles.adminSheetItem}>
+              <Text style={styles.adminSheetItemIcon}>🔨</Text>
+              <Text style={styles.adminSheetItemText}>Ban User</Text>
+            </Pressable>
+            <Pressable onPress={handlePromote} style={styles.adminSheetItem}>
+              <Text style={styles.adminSheetItemIcon}>
+                {adminTargetUser.role === 'moderator' ? '⬇️' : '⬆️'}
+              </Text>
+              <Text style={styles.actionSheetItemText}>
+                {adminTargetUser.role === 'moderator'
+                  ? 'Demote to Participant'
+                  : 'Promote to Moderator'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setShowAdminSheet(false);
+                setRoomTopic(adminTargetUser.nick);
+                Alert.prompt(
+                  'Change Room Topic',
+                  'Enter new topic',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Set Topic',
+                      onPress: (text) => {
+                        setRoomTopic(text);
+                        handleTopicChange();
+                      },
+                    },
+                  ],
+                  'plain-text',
+                  roomTopic,
+                );
+              }}
+              style={styles.adminSheetItem}
+            >
+              <Text style={styles.adminSheetItemIcon}>📝</Text>
+              <Text style={styles.adminSheetItemText}>Change Room Topic</Text>
+            </Pressable>
+            <Pressable onPress={() => setShowAdminSheet(false)} style={styles.adminSheetCancel}>
+              <Text style={styles.adminSheetCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -358,5 +487,74 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 10,
     textTransform: 'uppercase',
+  },
+  adminSheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+    zIndex: 200,
+  },
+  adminSheet: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#333',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  adminSheetTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  adminSheetSubtitle: {
+    color: '#888',
+    fontSize: 12,
+    marginBottom: 16,
+  },
+  adminSheetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+  },
+  adminSheetItemIcon: {
+    fontSize: 20,
+  },
+  adminSheetItemText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  adminSheetItemDestructive: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333',
+  },
+  adminSheetItemTextDestructive: {
+    color: '#E5484D',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  adminSheetCancel: {
+    marginTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333',
+  },
+  adminSheetCancelText: {
+    color: '#FF7A1A',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 14,
   },
 });

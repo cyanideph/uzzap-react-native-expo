@@ -405,6 +405,101 @@ export class ChatRoomService {
     );
   }
 
+  async kickUser(roomId: string, targetUserId: string, reason?: string): Promise<void> {
+    const id = newIqId('CHAT');
+    wsClient.sendIq(
+      buildIq({
+        id,
+        type: 'set',
+        action: 'chatuser',
+        target: 'conference',
+        amazProtocol: 'chat',
+        vcard: {
+          username: roomId,
+          extra: {
+            type: 'unavailable',
+            kick: targetUserId,
+            reason: reason ?? 'Kicked by moderator',
+          },
+        },
+      }),
+    );
+  }
+
+  async banUser(roomId: string, targetUserId: string, reason?: string): Promise<void> {
+    const id = newIqId('CHAT');
+    wsClient.sendIq(
+      buildIq({
+        id,
+        type: 'set',
+        action: 'chatuser',
+        target: 'conference',
+        amazProtocol: 'chat',
+        vcard: {
+          username: roomId,
+          extra: {
+            type: 'ban',
+            ban: targetUserId,
+            reason: reason ?? 'Banned by moderator',
+          },
+        },
+      }),
+    );
+  }
+
+  async setUserRole(
+    roomId: string,
+    targetUserId: string,
+    role: 'moderator' | 'participant' | 'visitor',
+  ): Promise<void> {
+    const id = newIqId('CHAT');
+    wsClient.sendIq(
+      buildIq({
+        id,
+        type: 'set',
+        action: 'chatuser',
+        target: 'conference',
+        amazProtocol: 'chat',
+        vcard: {
+          username: roomId,
+          extra: {
+            type: 'role',
+            role,
+            user: targetUserId,
+          },
+        },
+      }),
+    );
+  }
+
+  async setRoomTopic(roomId: string, topic: string): Promise<void> {
+    const id = newIqId('CHAT');
+    wsClient.sendIq(
+      buildIq({
+        id,
+        type: 'set',
+        action: 'msg',
+        target: 'conference',
+        amazProtocol: 'chat',
+        children: `<msg room="${roomId}" type="topic"><topic>${topic}</topic></msg>`,
+      }),
+    );
+  }
+
+  async setRoomPassword(roomId: string, password: string): Promise<void> {
+    const id = newIqId('CHAT');
+    wsClient.sendIq(
+      buildIq({
+        id,
+        type: 'set',
+        action: 'msg',
+        target: 'conference',
+        amazProtocol: 'chat',
+        children: `<msg room="${roomId}" type="topic"><password>${password}</password></msg>`,
+      }),
+    );
+  }
+
   private sendQueryUserGeneratedRooms(): void {
     const id = newIqId('CHAT');
     wsClient.sendIq(
@@ -574,3 +669,22 @@ export const hydrateChatRooms = (): Promise<{
   users: ChatRoomUser[];
   messages: ChatMessage[];
 }> => chatRoomService.hydrateFromDatabase();
+export const kickChatRoomUser = (
+  roomId: string,
+  targetUserId: string,
+  reason?: string,
+): Promise<void> => chatRoomService.kickUser(roomId, targetUserId, reason);
+export const banChatRoomUser = (
+  roomId: string,
+  targetUserId: string,
+  reason?: string,
+): Promise<void> => chatRoomService.banUser(roomId, targetUserId, reason);
+export const setChatRoomUserRole = (
+  roomId: string,
+  targetUserId: string,
+  role: 'moderator' | 'participant' | 'visitor',
+): Promise<void> => chatRoomService.setUserRole(roomId, targetUserId, role);
+export const setChatRoomTopic = (roomId: string, topic: string): Promise<void> =>
+  chatRoomService.setRoomTopic(roomId, topic);
+export const setChatRoomPassword = (roomId: string, password: string): Promise<void> =>
+  chatRoomService.setRoomPassword(roomId, password);

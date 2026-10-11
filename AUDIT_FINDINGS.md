@@ -18,11 +18,11 @@ The original JavaUzzap repository and its relevant source files are accessible. 
 
 The source repository contains the MIDlet manifest and declares **Uzzap 1.0.14**, MIDP 2.0 / CLDC 1.1. Both `themes/uzzap/theme.ini` and `themes/default/theme.ini` are readable, along with the original PNG theme assets, iconography, emoticons, help text, and alert sounds.
 
-The target contains only a small subset of the original theme resources under `assets/themes/uzzap/`; `assets/themes/default/` contains only `.gitkeep`. The target also has empty placeholders for chrome, icons, emoticons, and fonts. This is incomplete asset parity.
+At the baseline commit, the target contained only the Uzzap chrome slice and `assets/themes/default/` contained only `.gitkeep`. This branch now adds 30 source-identical default-theme assets: title/function bar slices, all 12 large main-menu icons, the default theme INI, backgrounds, tabs, presence indicators, and message/unread indicators. The remaining original asset inventory (including small icons and emoticons) is still not fully copied.
 
-### 2. Current target brand palette does not match the original Uzzap theme.ini
+### 2. Current target brand palette did not match the original Uzzap theme.ini (corrected on this branch)
 
-The target `src/theme/uzzap.ts` documents an orange-on-charcoal palette (for example `#FF7A1A`, `#14161A`, `#1E2228`). The original `themes/uzzap/theme.ini` instead identifies the skin as **Reptilian** and defines, among other values:
+The baseline target `src/theme/uzzap.ts` used an orange-on-charcoal palette (for example `#FF7A1A`, `#14161A`, `#1E2228`). This branch maps its theme tokens to source-backed values where the original `themes/uzzap/theme.ini` establishes their meaning. The source identifies the skin as **Reptilian** and defines, among other values:
 
 - Selected menu color: `c0fd85`
 - Main-menu text bar: `8eef04`
@@ -57,6 +57,15 @@ The target package scripts define lint, formatting, and TypeScript checks, but n
 4. **P1 — UI parity:** build a screen/interaction matrix from Java UI classes and `help.txt`; then map each source behavior to the Expo route/component and compare actual screenshots.
 5. **P1 — Reliability:** add or verify typecheck/lint/test/build automation and report the actual result of each command.
 6. **P2 — Feature completeness:** validate contacts/roster operations, message delivery/unread indicators, status/presence, settings, and help against the source and available server behavior.
+
+## Implementation changes on this branch
+
+- Added the source-parity audit report.
+- Corrected the stale UI/UX specification provenance and palette thesis.
+- Replaced the Uzzap token palette with original INI values where supported.
+- Updated shared title/function bars to use the original 16×32 px left/right PNG slices and 1×32 px center slice from the Reptilian theme.
+- Added 30 original default-theme assets to support the upcoming source-mapped menu and status UI.
+- Added GitHub Actions validation for TypeScript, lint, and Android Expo bundling; results must be checked on the PR.
 
 ## Verification status
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -72,12 +73,33 @@ export function TitleBar({ title, subtitle, right, onBack }: TitleBarProps): Rea
       style={[
         styles.titleBar,
         {
-          backgroundColor: theme.colors.chrome.bg,
-          minHeight: theme.layout.titleBarHeight + 24,
-          paddingHorizontal: theme.space.md,
+          backgroundColor: 'transparent',
+          height: 32,
+          minHeight: 32,
+          paddingHorizontal: 16,
+          overflow: 'hidden',
+          position: 'relative',
         },
       ]}
     >
+      <Image
+        source={require('../../../assets/themes/uzzap/titlebar-left.png')}
+        resizeMode="stretch"
+        accessible={false}
+        style={styles.chromeSliceLeft}
+      />
+      <Image
+        source={require('../../../assets/themes/uzzap/titlebar-middle.png')}
+        resizeMode="stretch"
+        accessible={false}
+        style={styles.chromeSliceMiddle}
+      />
+      <Image
+        source={require('../../../assets/themes/uzzap/titlebar-right.png')}
+        resizeMode="stretch"
+        accessible={false}
+        style={styles.chromeSliceRight}
+      />
       {onBack ? (
         <Pressable
           onPress={onBack}
@@ -112,7 +134,7 @@ export function TitleBar({ title, subtitle, right, onBack }: TitleBarProps): Rea
         {subtitle ? (
           <Text
             numberOfLines={1}
-            style={{ color: theme.colors.chrome.bevelHi, fontSize: theme.typography.size.xs }}
+            style={{ color: theme.colors.text.secondary, fontSize: theme.typography.size.xs }}
           >
             {subtitle}
           </Text>
@@ -177,11 +199,34 @@ export function FunctionBar({
       style={[
         styles.functionBar,
         {
-          backgroundColor: theme.colors.chrome.bgAlt,
-          borderTopColor: theme.colors.chrome.bevelLo,
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          height: 32,
+          minHeight: 32,
+          paddingHorizontal: 16,
+          overflow: 'hidden',
+          position: 'relative',
         },
       ]}
     >
+      <Image
+        source={require('../../../assets/themes/uzzap/functionbar-left.png')}
+        resizeMode="stretch"
+        accessible={false}
+        style={styles.chromeSliceLeft}
+      />
+      <Image
+        source={require('../../../assets/themes/uzzap/functionbar-middle.png')}
+        resizeMode="stretch"
+        accessible={false}
+        style={styles.chromeSliceMiddle}
+      />
+      <Image
+        source={require('../../../assets/themes/uzzap/functionbar-right.png')}
+        resizeMode="stretch"
+        accessible={false}
+        style={styles.chromeSliceRight}
+      />
       <Softkey label={leftLabel} onPress={onLeftPress} disabled={leftDisabled} align="left" />
       <Softkey label={rightLabel} onPress={onRightPress} disabled={rightDisabled} align="right" />
     </View>
@@ -589,6 +634,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  chromeSliceLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 16,
+    height: 32,
+  },
+  chromeSliceMiddle: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    top: 0,
+    height: 32,
+  },
+  chromeSliceRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: 16,
+    height: 32,
+  },
   titleTextWrap: {
     flex: 1,
     justifyContent: 'center',
@@ -600,9 +666,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    minHeight: 44,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    height: 32,
+    minHeight: 32,
+    borderTopWidth: 0,
+    overflow: 'hidden',
+    position: 'relative',
   },
   softkey: {
     paddingVertical: 8,

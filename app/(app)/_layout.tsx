@@ -11,9 +11,10 @@ interface TabMeta {
   activeIcon: keyof typeof Ionicons.glyphMap;
 }
 
-const TAB_META: Record<'contacts' | 'chat' | 'settings' | 'help', TabMeta> = {
+const TAB_META: Record<'contacts' | 'chat' | 'rooms' | 'settings' | 'help', TabMeta> = {
   contacts: { label: 'Contacts', icon: 'people-outline', activeIcon: 'people' },
   chat: { label: 'Chat', icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
+  rooms: { label: 'Rooms', icon: 'globe-outline', activeIcon: 'globe' },
   settings: { label: 'Settings', icon: 'settings-outline', activeIcon: 'settings' },
   help: { label: 'Help', icon: 'help-circle-outline', activeIcon: 'help-circle' },
 };
@@ -65,10 +66,12 @@ export default function AppLayout(): React.ReactElement {
     >
       <Tabs.Screen name="contacts" options={tabOptions('contacts')} />
       <Tabs.Screen name="chat" options={tabOptions('chat')} />
+      <Tabs.Screen name="rooms" options={tabOptions('rooms')} />
       <Tabs.Screen name="settings" options={tabOptions('settings')} />
       <Tabs.Screen name="help" options={tabOptions('help')} />
       {/* Thread screen: registered in the tab navigator but not shown as a tab. */}
       <Tabs.Screen name="chat/[id]" options={{ href: null }} />
+      <Tabs.Screen name="room/[id]" options={{ href: null }} />
     </Tabs>
   );
 }

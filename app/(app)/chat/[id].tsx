@@ -51,6 +51,8 @@ export default function ChatScreen(): React.ReactElement {
 
   const [draft, setDraft] = useState('');
   const [showMediaOptions, setShowMediaOptions] = useState(false);
+  const [longPressMessage, setLongPressMessage] = useState<Message | null>(null);
+  const [showActionSheet, setShowActionSheet] = useState(false);
 
   const messages = storedMessages ?? EMPTY_MESSAGES;
   const data = useMemo(() => [...messages].reverse(), [messages]);
@@ -171,6 +173,48 @@ export default function ChatScreen(): React.ReactElement {
     handleMediaSelect(type);
   };
 
+  const handleLongPress = (message: Message): void => {
+    setLongPressMessage(message);
+    setShowActionSheet(true);
+  };
+
+  const handleReply = (): void => {
+    if (!longPressMessage) return;
+    setShowActionSheet(false);
+    setDraft(longPressMessage.content);
+    // TODO: Add reply quote bar
+  };
+
+  const handleForward = (): void => {
+    if (!longPressMessage) return;
+    setShowActionSheet(false);
+    // TODO: Show forward target selection
+    Alert.alert('Forward', `Forward "${longPressMessage.content}" to...`);
+  };
+
+  const handleCopy = (): void => {
+    if (!longPressMessage) return;
+    setShowActionSheet(false);
+    // Clipboard would be set here
+    Alert.alert('Copied', 'Message copied to clipboard');
+  };
+
+  const handleDelete = (): void => {
+    if (!longPressMessage) return;
+    setShowActionSheet(false);
+    Alert.alert('Delete Message', 'Are you sure you want to delete this message?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          // TODO: Implement delete message
+          Alert.alert('Deleted', 'Message deleted (placeholder)');
+        },
+      },
+    ]);
+  };
+
   return (
     <Screen edges={['top']}>
       <TitleBar title={title} subtitle={status} />
@@ -199,7 +243,10 @@ export default function ChatScreen(): React.ReactElement {
           renderItem={({ item }) => {
             const mine = item.senderId === selfId;
             return (
-              <View style={[styles.bubbleRow, mine ? styles.alignEnd : styles.alignStart]}>
+              <Pressable
+                onLongPress={() => handleLongPress(item)}
+                style={[styles.bubbleRow, mine ? styles.alignEnd : styles.alignStart]}
+              >
                 <View
                   style={[
                     styles.bubble,
@@ -232,7 +279,7 @@ export default function ChatScreen(): React.ReactElement {
                     {mine ? `  ${TICK[item.status]}` : ''}
                   </Text>
                 </View>
-              </View>
+              </Pressable>
             );
           }}
         />
@@ -265,6 +312,36 @@ export default function ChatScreen(): React.ReactElement {
                 style={styles.mediaOptionCancel}
               >
                 <Text style={styles.mediaOptionCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {showActionSheet && longPressMessage && (
+          <View style={styles.actionSheetOverlay}>
+            <View style={styles.actionSheet}>
+              <Text style={styles.actionSheetTitle}>Message Options</Text>
+              <Pressable onPress={handleReply} style={styles.actionSheetItem}>
+                <Text style={styles.actionSheetItemIcon}>↩️</Text>
+                <Text style={styles.actionSheetItemText}>Reply</Text>
+              </Pressable>
+              <Pressable onPress={handleForward} style={styles.actionSheetItem}>
+                <Text style={styles.actionSheetItemIcon}>↪️</Text>
+                <Text style={styles.actionSheetItemText}>Forward</Text>
+              </Pressable>
+              <Pressable onPress={handleCopy} style={styles.actionSheetItem}>
+                <Text style={styles.actionSheetItemIcon}>📋</Text>
+                <Text style={styles.actionSheetItemText}>Copy</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleDelete}
+                style={[styles.actionSheetItem, styles.actionSheetItemDestructive]}
+              >
+                <Text style={styles.actionSheetItemIcon}>🗑️</Text>
+                <Text style={styles.actionSheetItemTextDestructive}>Delete</Text>
+              </Pressable>
+              <Pressable onPress={() => setShowActionSheet(false)} style={styles.actionSheetCancel}>
+                <Text style={styles.actionSheetCancelText}>Cancel</Text>
               </Pressable>
             </View>
           </View>
@@ -446,5 +523,71 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     paddingVertical: 12,
+  },
+  actionSheetOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+    zIndex: 200,
+  },
+  actionSheet: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#333',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  actionSheetTitle: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  actionSheetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+  },
+  actionSheetItemIcon: {
+    fontSize: 20,
+  },
+  actionSheetItemText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  actionSheetItemDestructive: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333',
+  },
+  actionSheetItemTextDestructive: {
+    color: '#E5484D',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  actionSheetCancel: {
+    marginTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333',
+  },
+  actionSheetCancelText: {
+    color: '#FF7A1A',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 14,
   },
 });

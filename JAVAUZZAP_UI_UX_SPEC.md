@@ -1,38 +1,42 @@
 # JavaUzzap → React Native (Expo) — Pixel-Perfect UI/UX Specification
 
-**Version:** 1.0
-**Author:** @designer
+**Version:** 1.1
 **Target:** React Native + Expo SDK 52+, Android (API 24+) primary
 **Companion docs:** `JAVAUZZAP_TO_REACT_NATIVE_EXPO_PLAN.md`
-**Repo referenced by brief:** `https://github.com/cyanideph/javauzzap.git`
 
 ---
 
 ## 0. Asset Provenance & Verification Status (READ FIRST)
 
-The brief instructs extraction of exact values from `themes/uzzap/theme.ini`, the 9-patch PNGs, and `help.txt`. Those source assets **could not be retrieved**. This was verified, not assumed:
+**Correction (2026-10-11): the original source repository is accessible.** The previous v1.0 note saying the repository and theme assets could not be retrieved is stale and must not be used as the current audit result.
 
-| Check                                    | Command / method                                     | Result                                |
-| ---------------------------------------- | ---------------------------------------------------- | ------------------------------------- |
-| Repo exists?                             | `GET api.github.com/repos/cyanideph/javauzzap`       | **HTTP 404**                          |
-| Repo in search index?                    | `GET api.github.com/search/repositories?q=javauzzap` | **`total_count: 0`**                  |
-| Repo landing page                        | `GET github.com/cyanideph/javauzzap`                 | **HTTP 404**                          |
-| Local clone (`repos/javauzzap/`)         | inspected                                            | Stub only                             |
-| `themes/uzzap/`                          | `ls`                                                 | **Empty directory**                   |
-| `themes/default/`                        | `ls`                                                 | **Empty directory**                   |
-| `help.txt` / `battery.txt`               | `read`                                               | Literally `404: Not Found` (14 bytes) |
-| `com/kolipri/kalypte/Kalypte.java`       | `read`                                               | Literally `404: Not Found`            |
-| Any real Uzzap PNG / theme.ini on device | `find / -iname theme.ini` etc.                       | **None found**                        |
+Verified source files in `cyanideph/javauzzap` include:
 
-**Consequence:** No hex color, no font metric, and no 9-patch pixel inset in this document can be truthfully labelled "extracted from the binary." Anything presented as a concrete number below is **RECONSTRUCTED** from:
+- `META-INF/MANIFEST.MF` — Uzzap MIDlet version 1.0.14, MIDP 2.0 / CLDC 1.1
+- `themes/uzzap/theme.ini` and `themes/default/theme.ini`
+- PNG assets in both `themes/uzzap/` and `themes/default/`
+- `help.txt`, `help0.txt`, `battery.txt`, and alert sounds
+- Decompiled Java UI, protocol, persistence, and application classes under `com/kolipri/`
 
-1. The period-correct **Uzzap 1.0.x J2ME client** (3rd Brand Pte Ltd, 2007–2008) as described in the companion plan.
-2. **MIDP 2.0 / CLDC 1.1** platform conventions (system bitmap fonts, 9-patch `ImageItem`/`TiledImage`, softkey model, `ChoiceGroup`, `List` IMPLICIT/EXCLUSIVE).
-3. Standard J2ME feature-phone chrome geometry (176×208 / 240×320 canvases, ~22–28 px bars).
+The original Uzzap theme is named **Reptilian**. Source-backed values from `themes/uzzap/theme.ini` include:
 
-Each reconstructed value is tagged `⟦R⟧`. A **one-pass extraction procedure** (§8) converts every `⟦R⟧` value into a verified value the moment the real assets appear. The token _architecture_, component inventory, interaction model, accessibility, and animation specs are valid regardless of asset availability, because they are derived from MIDP semantics and the app's documented behavior.
+| Setting | Original value |
+| --- | --- |
+| `kt.skin.name` | `Reptilian` |
+| `kt.menu.selected.color` | `#C0FD85` |
+| `kalypte.mainmenu.textbar.color` | `#8EEF04` |
+| `kalypte.mainmenu.textbar.font.color` | `#000000` |
+| `kt.textview.font.color` | `#000000` |
+| `kt.textview.special.color` | `#AF0C0D` |
+| `kt.textview.other.special.color` | `#0D0CAF` |
+| `kt.tabbedpanel.background.color` | `#F9F9F9` |
+| `kt.popup.background.color` | `#F9F9F9` |
+| `kt.titlebar.font.color` / `kt.functionbar.font.color` | `#000000` |
+| `kt.titlebar.font` / `kt.functionbar.font` | `14` |
 
-> **If real assets are supplied later, only the values in the tables marked ⟦R⟧ change. No structural edits are required.**
+These are configuration values, not a complete pixel measurement of every screen. The original PNGs remain the source of truth for image chrome, icons, backgrounds, and status graphics. The default theme has its own separate palette and asset set.
+
+**Important:** any later section or table that labels orange/charcoal colors, dimensions, bevels, spacing, or other values as `⟦R⟧` is a reconstructed proposal, not a value extracted from the original source. Reconcile those tables with the actual source INI and image assets before calling the UI pixel-perfect. Do not infer exact titlebar colors or image metrics from the INI alone.
 
 ---
 

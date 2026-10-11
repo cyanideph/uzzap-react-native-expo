@@ -5,8 +5,8 @@
  * semantic colour type, spacing/type/radius/shadow scales, layout metrics and
  * the small colour helpers used across themes.
  *
- * Concrete palettes live in `./uzzap` (orange-on-charcoal brand) and
- * `./default` (silver / steel-blue MIDP look). Components must consume the
+ * Concrete palettes live in `./uzzap` (original Reptilian skin values where source-backed)
+ * and `./default` (original MIDP system theme values where source-backed). Components must consume the
  * semantic tokens from `useTheme()` — never raw hex — so a theme swap is just a
  * context-value change.
  *

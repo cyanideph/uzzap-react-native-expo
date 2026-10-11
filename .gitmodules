@@ -1,0 +1,3 @@
+[submodule "javauzzap"]
+  path = javauzzap
+  url = https://github.com/cyanideph/javauzzap.git

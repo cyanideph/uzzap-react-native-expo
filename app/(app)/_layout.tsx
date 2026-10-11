@@ -11,7 +11,8 @@ interface TabMeta {
   activeIcon: keyof typeof Ionicons.glyphMap;
 }
 
-const TAB_META: Record<'contacts' | 'chat' | 'settings' | 'help', TabMeta> = {
+const TAB_META: Record<'home' | 'contacts' | 'chat' | 'settings' | 'help', TabMeta> = {
+  home: { label: 'Home', icon: 'home-outline', activeIcon: 'home' },
   contacts: { label: 'Contacts', icon: 'people-outline', activeIcon: 'people' },
   chat: { label: 'Chat', icon: 'chatbubbles-outline', activeIcon: 'chatbubbles' },
   settings: { label: 'Settings', icon: 'settings-outline', activeIcon: 'settings' },
@@ -30,7 +31,8 @@ function tabOptions(name: keyof typeof TAB_META) {
 }
 
 /**
- * Main app tabs: Contacts · Chat · Settings · Help.
+ * Main app tabs: Home · Contacts · Chat · Settings · Help. Home mirrors the
+ * original JavaUzzap main menu using the source large-icon assets.
  *
  * The chat thread (`chat/[id]`) lives in the same navigator but is hidden from
  * the tab bar — it is pushed from the buddy/conversation lists.
@@ -51,6 +53,7 @@ export default function AppLayout(): React.ReactElement {
 
   return (
     <Tabs
+      initialRouteName="home"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: theme.colors.brand.primary,
@@ -63,6 +66,7 @@ export default function AppLayout(): React.ReactElement {
         },
       }}
     >
+      <Tabs.Screen name="home" options={tabOptions('home')} />
       <Tabs.Screen name="contacts" options={tabOptions('contacts')} />
       <Tabs.Screen name="chat" options={tabOptions('chat')} />
       <Tabs.Screen name="settings" options={tabOptions('settings')} />

@@ -4,7 +4,9 @@ import {
   ActionSheetIOS,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -53,6 +55,7 @@ export default function ChatScreen(): React.ReactElement {
   const [showMediaOptions, setShowMediaOptions] = useState(false);
   const [longPressMessage, setLongPressMessage] = useState<Message | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
+  const [imageViewer, setImageViewer] = useState<{ uri: string; mimeType?: string } | null>(null);
 
   const messages = storedMessages ?? EMPTY_MESSAGES;
   const data = useMemo(() => [...messages].reverse(), [messages]);
@@ -129,6 +132,30 @@ export default function ChatScreen(): React.ReactElement {
           latitude: media.meta.latitude as number,
           longitude: media.meta.longitude as number,
           locationName: media.meta.locationName as string,
+          imageBubble: {
+            maxWidth: '78%',
+            maxHeight: 300,
+            borderRadius: 16,
+            overflow: 'hidden',
+          },
+          imageMessage: {
+            width: '100%',
+            aspectRatio: 1,
+          },
+          imageViewerOverlay: {
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.95)',
+            justifyContent: 'center',
+            alignItems: 'center',
+          },
+          imageViewerContainer: {
+            maxWidth: '95%',
+            maxHeight: '90%',
+          },
+          imageViewerImage: {
+            width: '100%',
+            height: '100%',
+          },
         });
       }
     } catch {
@@ -242,9 +269,19 @@ export default function ChatScreen(): React.ReactElement {
           }
           renderItem={({ item }) => {
             const mine = item.senderId === selfId;
+            const isImage = item.type === 'image' && item.meta?.uri;
             return (
               <Pressable
                 onLongPress={() => handleLongPress(item)}
+                onPress={
+                  isImage
+                    ? () =>
+                        setImageViewer({
+                          uri: item.meta?.uri as string,
+                          mimeType: item.meta?.mimeType as string,
+                        })
+                    : undefined
+                }
                 style={[styles.bubbleRow, mine ? styles.alignEnd : styles.alignStart]}
               >
                 <View
@@ -257,16 +294,26 @@ export default function ChatScreen(): React.ReactElement {
                     },
                   ]}
                 >
-                  <Text
-                    style={{
-                      color: mine
-                        ? theme.colors.brand.sentBubbleText
-                        : theme.colors.semantic.bubbleInText,
-                      fontSize: theme.typography.size.body,
-                    }}
-                  >
-                    {item.content}
-                  </Text>
+                  {isImage ? (
+                    <View style={styles.imageBubble}>
+                      <Image
+                        source={{ uri: item.meta?.uri as string }}
+                        style={styles.imageMessage}
+                        resizeMode="contain"
+                      />
+                    </View>
+                  ) : (
+                    <Text
+                      style={{
+                        color: mine
+                          ? theme.colors.brand.sentBubbleText
+                          : theme.colors.semantic.bubbleInText,
+                        fontSize: theme.typography.size.body,
+                      }}
+                    >
+                      {item.content}
+                    </Text>
+                  )}
                   <Text
                     style={{
                       color: theme.colors.text.secondary,
@@ -402,6 +449,24 @@ export default function ChatScreen(): React.ReactElement {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+      <Modal
+        visible={imageViewer !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setImageViewer(null)}
+      >
+        {imageViewer && (
+          <View style={styles.imageViewerOverlay} onTouchStart={() => setImageViewer(null)}>
+            <View style={styles.imageViewerContainer}>
+              <Image
+                source={{ uri: imageViewer.uri }}
+                style={styles.imageViewerImage}
+                resizeMode="contain"
+              />
+            </View>
+          </View>
+        )}
+      </Modal>
     </Screen>
   );
 }

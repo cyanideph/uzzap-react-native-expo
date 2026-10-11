@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
-import React, { useMemo } from 'react';
-import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { EmptyState, Screen, SectionHeader, TitleBar } from '@/components/ui';
 import { useUzzapStore } from '@/store';
@@ -40,19 +40,31 @@ export default function ContactsScreen(): React.ReactElement {
   const conversations = useUzzapStore((state) => state.conversations);
   const presence = useUzzapStore((state) => state.presence);
 
+  const [searchQuery, setSearchQuery] = useState('');
+
   const sections = useMemo<BuddySection[]>(() => {
     const all = Object.values(buddies);
     const rank = (buddy: Buddy): number =>
       PRESENCE_RANK[presence[buddy.userId]?.status ?? buddy.status];
 
-    const online = all.filter((buddy) => rank(buddy) <= 2).sort(byName);
-    const others = all.filter((buddy) => rank(buddy) > 2).sort(byName);
+    const filtered = all.filter((buddy) => {
+      const query = searchQuery.trim().toLowerCase();
+      if (!query) return true;
+      return (
+        buddy.userId.toLowerCase().includes(query) ||
+        buddy.displayName.toLowerCase().includes(query) ||
+        (buddy.phoneNumber ?? '').includes(query)
+      );
+    });
+
+    const online = filtered.filter((buddy) => rank(buddy) <= 2).sort(byName);
+    const others = filtered.filter((buddy) => rank(buddy) > 2).sort(byName);
 
     const result: BuddySection[] = [];
     if (online.length > 0) result.push({ title: `ONLINE (${online.length})`, data: online });
     if (others.length > 0) result.push({ title: `OTHERS (${others.length})`, data: others });
     return result;
-  }, [buddies, presence]);
+  }, [buddies, presence, searchQuery]);
 
   // Conversations are keyed by conversation id; index unread counts by buddy.
   const unreadByBuddy = useMemo<Record<string, number>>(() => {
@@ -69,7 +81,26 @@ export default function ContactsScreen(): React.ReactElement {
 
   return (
     <Screen edges={['top']}>
-      <TitleBar title="UZZAP" subtitle={`${onlineCount} online`} />
+      <TitleBar
+        title="UZZAP"
+        subtitle={`${onlineCount} online`}
+        right={
+          <Pressable onPress={() => router.push('/add-buddy')} accessibilityRole="button">
+            <Text style={{ color: theme.colors.brand.primary, fontSize: 16, fontWeight: '700' }}>
+              ADD
+            </Text>
+          </Pressable>
+        }
+      />
+      <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search buddies..."
+          placeholderTextColor={theme.colors.text.disabled}
+          style={styles.searchInput}
+        />
+      </View>
       {Object.keys(buddies).length === 0 ? (
         <EmptyState
           title="No buddies yet"
@@ -205,5 +236,17 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 999,
+  },
+  searchInput: {
+    height: 40,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#333',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    fontSize: 15,
+    color: '#fff',
+    backgroundColor: '#1a1a1a',
+    placeholderTextColor: '#666',
   },
 });

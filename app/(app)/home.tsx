@@ -15,7 +15,7 @@ import { FunctionBar, Screen, TitleBar } from '@/components/ui';
 import { useUzzapStore } from '@/store';
 import { useTheme } from '@/theme';
 
-type AppRoute = '/contacts' | '/chat' | '/settings' | '/help';
+type AppRoute = '/contacts' | '/contacts/add' | '/chat' | '/settings' | '/help';
 
 interface MenuItem {
   label: string;
@@ -46,8 +46,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     label: 'Add or Invite Buddies',
     icon: require('../../assets/themes/default/002-buddies-large.png'),
-    action: 'unavailable',
-    detail: 'The add/invite flow still needs to be ported from the original Java client.',
+    route: '/contacts/add',
   },
   {
     label: 'Settings',

@@ -24,10 +24,10 @@ export const lightThemes: Record<'uzzap' | 'default', ThemeTokens> = {
 export const allThemes: ThemeTokens[] = [uzzap, standard, deriveDark(uzzap), deriveDark(standard)];
 
 /** Concrete brand ids, in presentation order. */
-export const THEME_IDS: ReadonlyArray<'uzzap' | 'default'> = ['uzzap', 'default'];
+export const THEME_IDS: readonly ('uzzap' | 'default')[] = ['uzzap', 'default'];
 
 /** User-facing theme choices. */
-export const THEME_NAMES: ReadonlyArray<ThemeName> = ['uzzap', 'default', 'system'];
+export const THEME_NAMES: readonly ThemeName[] = ['uzzap', 'default', 'system'];
 
 export const DEFAULT_THEME_ID: ThemeId = 'uzzap';
 export const DEFAULT_THEME_NAME: ThemeName = 'uzzap';

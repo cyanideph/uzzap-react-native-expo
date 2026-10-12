@@ -24,6 +24,7 @@ function tabOptions(name: keyof typeof TAB_META) {
   return {
     tabBarLabel: meta.label,
     title: meta.label,
+    tabBarTestID: `${name}-tab`,
     tabBarIcon: ({ focused, color, size }: { focused: boolean; color: string; size: number }) => (
       <Ionicons name={focused ? meta.activeIcon : meta.icon} color={color} size={size} />
     ),

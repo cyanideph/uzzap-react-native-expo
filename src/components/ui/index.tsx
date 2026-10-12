@@ -31,6 +31,7 @@ export interface ScreenProps {
   style?: StyleProp<ViewStyle>;
   edges?: ('top' | 'right' | 'bottom' | 'left')[];
   padded?: boolean;
+  testID?: string;
 }
 
 export function Screen({
@@ -38,10 +39,12 @@ export function Screen({
   style,
   edges = ['top', 'bottom'],
   padded = false,
+  testID,
 }: ScreenProps): React.ReactElement {
   const { theme } = useTheme();
   return (
     <SafeAreaView
+      testID={testID}
       style={[
         { flex: 1, backgroundColor: theme.colors.surface.base },
         padded && { paddingHorizontal: theme.space.lg },
@@ -128,13 +131,21 @@ interface SoftkeyProps {
   onPress?: () => void;
   disabled?: boolean;
   align: 'left' | 'right';
+  testID?: string;
 }
 
-function Softkey({ label, onPress, disabled, align }: SoftkeyProps): React.ReactElement | null {
+function Softkey({
+  label,
+  onPress,
+  disabled,
+  align,
+  testID,
+}: SoftkeyProps): React.ReactElement | null {
   const { theme } = useTheme();
   if (!label) return null;
   return (
     <Pressable
+      testID={testID}
       onPress={disabled ? undefined : onPress}
       disabled={disabled}
       accessibilityRole="button"
@@ -161,6 +172,8 @@ export interface FunctionBarProps {
   onRightPress?: () => void;
   leftDisabled?: boolean;
   rightDisabled?: boolean;
+  leftTestID?: string;
+  rightTestID?: string;
 }
 
 export function FunctionBar({
@@ -170,6 +183,8 @@ export function FunctionBar({
   onRightPress,
   leftDisabled,
   rightDisabled,
+  leftTestID,
+  rightTestID,
 }: FunctionBarProps): React.ReactElement {
   const { theme } = useTheme();
   return (
@@ -182,8 +197,20 @@ export function FunctionBar({
         },
       ]}
     >
-      <Softkey label={leftLabel} onPress={onLeftPress} disabled={leftDisabled} align="left" />
-      <Softkey label={rightLabel} onPress={onRightPress} disabled={rightDisabled} align="right" />
+      <Softkey
+        label={leftLabel}
+        onPress={onLeftPress}
+        disabled={leftDisabled}
+        align="left"
+        testID={leftTestID}
+      />
+      <Softkey
+        label={rightLabel}
+        onPress={onRightPress}
+        disabled={rightDisabled}
+        align="right"
+        testID={rightTestID}
+      />
     </View>
   );
 }

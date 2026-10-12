@@ -352,7 +352,7 @@ export default function ChatScreen(): React.ReactElement {
   };
 
   return (
-    <Screen edges={['top']}>
+    <Screen edges={['top']} testID="chat-screen">
       <TitleBar title={title} subtitle={status} />
       <KeyboardAvoidingView
         style={styles.flex}
@@ -667,6 +667,7 @@ export default function ChatScreen(): React.ReactElement {
             <Text style={styles.mediaButtonText}>😊</Text>
           </Pressable>
           <TextInput
+            testID="message-input"
             value={draft}
             onChangeText={setDraft}
             placeholder="Type a message"
@@ -682,6 +683,7 @@ export default function ChatScreen(): React.ReactElement {
             ]}
           />
           <Pressable
+            testID="send-button"
             onPress={handleSend}
             disabled={!canSend}
             accessibilityRole="button"

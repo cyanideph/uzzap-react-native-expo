@@ -12,10 +12,13 @@ import type {
   ChatRoomUser,
   ChatMessage,
   CreateRoomInput,
+} from '../types/models';
+import type {
+  InboundChatMessage,
+  ChatPresenceUpdate,
   ChatRoomType,
   ChatMessageType,
-} from '../types/models';
-import type { InboundChatMessage, ChatPresenceUpdate } from '../types/protocol';
+} from '../types/protocol';
 import { buildIq, newIqId, wsClient } from './wsClient';
 
 function rowToChatRoom(row: ChatRoomRow): ChatRoom {

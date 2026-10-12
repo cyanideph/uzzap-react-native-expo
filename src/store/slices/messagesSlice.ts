@@ -16,6 +16,7 @@ export interface MessagesSlice {
 
   appendMessage: (message: Message) => void;
   upsertMessage: (message: Message) => void;
+  removeMessage: (conversationId: string, messageId: string) => void;
   updateMessageStatus: (
     conversationId: string,
     messageId: string,
@@ -92,6 +93,15 @@ export const createMessagesSlice: UzzapSlice<MessagesSlice> = (set, get) => ({
       if (index >= 0) history[index] = message;
       else history.push(message);
       state.messagesByConversation[message.conversationId] = history;
+    }),
+
+  removeMessage: (conversationId, messageId) =>
+    set((state) => {
+      const history = state.messagesByConversation[conversationId];
+      if (!history) return;
+      state.messagesByConversation[conversationId] = history.filter(
+        (existing) => existing.id !== messageId,
+      );
     }),
 
   updateMessageStatus: (conversationId, messageId, status, at) =>

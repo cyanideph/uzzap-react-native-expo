@@ -384,6 +384,41 @@ export class MessageService {
     useUzzapStore.getState().markConversationRead(conversationId);
   }
 
+  /** Delete a message locally (store + SQLite + offline queue). */
+  async deleteMessage(conversationId: string, messageId: string): Promise<boolean> {
+    const store = useUzzapStore.getState();
+    const history = store.messagesByConversation[conversationId] ?? [];
+    if (!history.some((m) => m.id === messageId)) return false;
+    store.removeMessage(conversationId, messageId);
+    await db.delete(messagesTable).where(eq(messagesTable.id, messageId)).run();
+    await offlineQueue.remove(messageId);
+    return true;
+  }
+
+  /** Forward a message's content to another conversation. */
+  async forwardMessage(
+    messageId: string,
+    targetRecipientId: string,
+    targetConversationId?: string,
+  ): Promise<Message | null> {
+    const store = useUzzapStore.getState();
+    let source: Message | undefined;
+    for (const list of Object.values(store.messagesByConversation)) {
+      source = list.find((m) => m.id === messageId);
+      if (source) break;
+    }
+    if (!source) return null;
+    const { replyTo: _replyTo, ...restMeta } = source.meta ?? {};
+    return this.sendMessage({
+      recipientId: targetRecipientId,
+      conversationId: targetConversationId ?? targetRecipientId,
+      content: source.content,
+      type: source.type,
+      protocol: source.protocol,
+      meta: { ...restMeta, forwardedFrom: source.senderId },
+    });
+  }
+
   async loadConversation(conversationId: string): Promise<Message[]> {
     const rows = await db
       .select()
@@ -532,3 +567,11 @@ export const sendMedia = (input: SendMediaInput): Promise<Message> =>
 export const flushOfflineQueue = (): Promise<number> => messageService.flushOfflineQueue();
 export const retryMessage = (messageId: string): Promise<boolean> =>
   messageService.retryMessage(messageId);
+export const deleteMessage = (conversationId: string, messageId: string): Promise<boolean> =>
+  messageService.deleteMessage(conversationId, messageId);
+export const forwardMessage = (
+  messageId: string,
+  targetRecipientId: string,
+  targetConversationId?: string,
+): Promise<Message | null> =>
+  messageService.forwardMessage(messageId, targetRecipientId, targetConversationId);

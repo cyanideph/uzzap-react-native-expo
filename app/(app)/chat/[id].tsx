@@ -15,8 +15,12 @@ import {
   View,
 } from 'react-native';
 
+import * as Clipboard from 'expo-clipboard';
+import * as Linking from 'expo-linking';
+import { Audio } from 'expo-av';
+
 import { Screen, TitleBar } from '@/components/ui';
-import { messageService, sendMedia } from '@/services/messageService';
+import { messageService, sendMedia, deleteMessage, forwardMessage } from '@/services/messageService';
 import { mediaService } from '@/services/mediaService';
 import { useUzzapStore } from '@/store';
 import { useTheme } from '@/theme';
@@ -56,6 +60,10 @@ export default function ChatScreen(): React.ReactElement {
   const [longPressMessage, setLongPressMessage] = useState<Message | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [imageViewer, setImageViewer] = useState<{ uri: string; mimeType?: string } | null>(null);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [showForwardPicker, setShowForwardPicker] = useState(false);
+  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const soundRef = React.useRef<Audio.Sound | null>(null);
 
   const messages = storedMessages ?? EMPTY_MESSAGES;
   const data = useMemo(() => [...messages].reverse(), [messages]);
@@ -80,6 +88,13 @@ export default function ChatScreen(): React.ReactElement {
     };
   }, [id]);
 
+  useEffect(() => {
+    return () => {
+      void soundRef.current?.unloadAsync().catch(() => undefined);
+      soundRef.current = null;
+    };
+  }, []);
+
   if (!id) {
     return <Redirect href="/chat" />;
   }
@@ -94,8 +109,12 @@ export default function ChatScreen(): React.ReactElement {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
+    const replyMeta = replyTo
+      ? { replyTo: { id: replyTo.id, senderId: replyTo.senderId, content: replyTo.content } }
+      : undefined;
+    setReplyTo(null);
     void messageService
-      .sendMessage({ recipientId: id, conversationId: id, content: text })
+      .sendMessage({ recipientId: id, conversationId: id, content: text, meta: replyMeta })
       .catch(() => {});
   };
 
@@ -184,38 +203,98 @@ export default function ChatScreen(): React.ReactElement {
   const handleReply = (): void => {
     if (!longPressMessage) return;
     setShowActionSheet(false);
-    setDraft(longPressMessage.content);
-    // TODO: Add reply quote bar
+    setReplyTo(longPressMessage);
+    setLongPressMessage(null);
   };
 
   const handleForward = (): void => {
     if (!longPressMessage) return;
     setShowActionSheet(false);
-    // TODO: Show forward target selection
-    Alert.alert('Forward', `Forward "${longPressMessage.content}" to...`);
+    setShowForwardPicker(true);
+  };
+
+  const handleForwardTo = (targetId: string): void => {
+    if (!longPressMessage) return;
+    const source = longPressMessage;
+    setShowForwardPicker(false);
+    setLongPressMessage(null);
+    void forwardMessage(source.id, targetId).catch(() => {
+      Alert.alert('Error', 'Failed to forward message');
+    });
   };
 
   const handleCopy = (): void => {
     if (!longPressMessage) return;
+    const text = longPressMessage.content;
     setShowActionSheet(false);
-    // Clipboard would be set here
-    Alert.alert('Copied', 'Message copied to clipboard');
+    setLongPressMessage(null);
+    void Clipboard.setStringAsync(text).then(() => {
+      Alert.alert('Copied', 'Message copied to clipboard');
+    });
   };
 
   const handleDelete = (): void => {
     if (!longPressMessage) return;
+    const target = longPressMessage;
     setShowActionSheet(false);
+    setLongPressMessage(null);
     Alert.alert('Delete Message', 'Are you sure you want to delete this message?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          // TODO: Implement delete message
-          Alert.alert('Deleted', 'Message deleted (placeholder)');
+          void deleteMessage(id, target.id).catch(() => {
+            Alert.alert('Error', 'Failed to delete message');
+          });
         },
       },
     ]);
+  };
+
+  const handleVoiceToggle = async (message: Message): Promise<void> => {
+    try {
+      if (playingVoiceId === message.id) {
+        await soundRef.current?.stopAsync().catch(() => undefined);
+        await soundRef.current?.unloadAsync().catch(() => undefined);
+        soundRef.current = null;
+        setPlayingVoiceId(null);
+        return;
+      }
+      await soundRef.current?.unloadAsync().catch(() => undefined);
+      const sound = new Audio.Sound();
+      soundRef.current = sound;
+      setPlayingVoiceId(message.id);
+      await sound.loadAsync({ uri: message.content }, { shouldPlay: true });
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          setPlayingVoiceId(null);
+        }
+      });
+    } catch {
+      setPlayingVoiceId(null);
+      Alert.alert('Error', 'Failed to play voice message');
+    }
+  };
+
+  const handleOpenLocation = (message: Message): void => {
+    const lat = message.meta?.latitude as number | undefined;
+    const lng = message.meta?.longitude as number | undefined;
+    if (lat === undefined || lng === undefined) return;
+    const url = Platform.OS === 'ios'
+      ? `maps://?q=${lat},${lng}`
+      : `geo:${lat},${lng}?q=${lat},${lng}`;
+    void Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Could not open maps');
+    });
+  };
+
+  const handleOpenFile = (message: Message): void => {
+    const uri = message.content;
+    if (!uri) return;
+    void Linking.openURL(uri).catch(() => {
+      Alert.alert('Error', 'Could not open file');
+    });
   };
 
   return (
@@ -246,6 +325,14 @@ export default function ChatScreen(): React.ReactElement {
           renderItem={({ item }) => {
             const mine = item.senderId === selfId;
             const isImage = item.type === 'image' && item.meta?.uri;
+            const isVoice = item.type === 'voice';
+            const isLocation = item.type === 'location';
+            const isFile = item.type === 'file';
+            const reply = item.meta?.replyTo as
+              | { id: string; senderId: string; content: string }
+              | undefined;
+            const forwardedFrom = item.meta?.forwardedFrom as string | undefined;
+            const duration = item.meta?.duration as number | undefined;
             return (
               <Pressable
                 onLongPress={() => handleLongPress(item)}
@@ -270,14 +357,54 @@ export default function ChatScreen(): React.ReactElement {
                     },
                   ]}
                 >
+                  {reply ? (
+                    <View style={styles.replyQuote}>
+                      <Text style={styles.replyQuoteText} numberOfLines={2}>
+                        {reply.content}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {forwardedFrom ? (
+                    <Text style={styles.forwardedLabel}>Forwarded</Text>
+                  ) : null}
                   {isImage ? (
                     <View style={styles.imageBubble}>
                       <Image
                         source={{ uri: item.meta?.uri as string }}
                         style={styles.imageMessage}
-                        resizeMode="contain"
+                        resizeMode="cover"
                       />
                     </View>
+                  ) : isVoice ? (
+                    <Pressable
+                      onPress={() => void handleVoiceToggle(item)}
+                      style={styles.voiceRow}
+                    >
+                      <Text style={styles.voiceIcon}>
+                        {playingVoiceId === item.id ? '⏸' : '▶'}
+                      </Text>
+                      <Text style={styles.voiceText}>
+                        Voice message{duration ? ` • ${duration}s` : ''}
+                      </Text>
+                    </Pressable>
+                  ) : isLocation ? (
+                    <Pressable onPress={() => handleOpenLocation(item)} style={styles.locationCard}>
+                      <Text style={styles.locationIcon}>📍</Text>
+                      <Text style={styles.locationText} numberOfLines={2}>
+                        {(item.meta?.locationName as string | undefined) ?? item.content}
+                      </Text>
+                      <Text style={styles.locationSub}>Tap to open in Maps</Text>
+                    </Pressable>
+                  ) : isFile ? (
+                    <Pressable onPress={() => handleOpenFile(item)} style={styles.fileCard}>
+                      <Text style={styles.fileIcon}>📎</Text>
+                      <View style={styles.fileInfo}>
+                        <Text style={styles.fileName} numberOfLines={1}>
+                          {(item.meta?.fileName as string | undefined) ?? 'Attachment'}
+                        </Text>
+                        <Text style={styles.fileSub}>Tap to open</Text>
+                      </View>
+                    </Pressable>
                   ) : (
                     <Text
                       style={{
@@ -370,6 +497,20 @@ export default function ChatScreen(): React.ReactElement {
           </View>
         )}
 
+        {replyTo ? (
+          <View style={styles.replyBar}>
+            <View style={styles.replyBarText}>
+              <Text style={styles.replyBarLabel}>Replying to</Text>
+              <Text style={styles.replyBarContent} numberOfLines={1}>
+                {replyTo.content}
+              </Text>
+            </View>
+            <Pressable onPress={() => setReplyTo(null)} accessibilityRole="button">
+              <Text style={styles.replyBarClose}>✕</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View
           style={[
             styles.toolbar,
@@ -442,6 +583,41 @@ export default function ChatScreen(): React.ReactElement {
             </View>
           </View>
         )}
+      </Modal>
+      <Modal
+        visible={showForwardPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowForwardPicker(false)}
+      >
+        <View style={styles.forwardOverlay}>
+          <View style={styles.forwardBox}>
+            <Text style={styles.forwardTitle}>Forward to</Text>
+            <FlatList
+              data={Object.values(buddies).filter((b) => b.userId !== id)}
+              keyExtractor={(b) => b.userId}
+              renderItem={({ item: b }) => (
+                <Pressable onPress={() => handleForwardTo(b.userId)} style={styles.forwardRow}>
+                  <Text style={styles.forwardName} numberOfLines={1}>
+                    {b.displayName}
+                  </Text>
+                  <Text style={styles.forwardId} numberOfLines={1}>
+                    {b.userId}
+                  </Text>
+                </Pressable>
+              )}
+              ListEmptyComponent={
+                <Text style={styles.forwardEmpty}>No other buddies</Text>
+              }
+            />
+            <Pressable
+              onPress={() => setShowForwardPicker(false)}
+              style={styles.forwardCancel}
+            >
+              <Text style={styles.forwardCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
       </Modal>
     </Screen>
   );
@@ -654,5 +830,158 @@ const styles = StyleSheet.create({
   imageViewerImage: {
     width: '100%',
     height: '100%',
+  },
+  replyQuote: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF7A1A',
+    paddingLeft: 8,
+    marginBottom: 4,
+    opacity: 0.9,
+  },
+  replyQuoteText: {
+    color: '#888',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  forwardedLabel: {
+    color: '#FF7A1A',
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  voiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 160,
+  },
+  voiceIcon: {
+    fontSize: 22,
+    color: '#FF7A1A',
+  },
+  voiceText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  locationCard: {
+    minWidth: 160,
+    gap: 2,
+  },
+  locationIcon: {
+    fontSize: 26,
+  },
+  locationText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  locationSub: {
+    color: '#FF7A1A',
+    fontSize: 11,
+  },
+  fileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 160,
+  },
+  fileIcon: {
+    fontSize: 26,
+  },
+  fileInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  fileName: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  fileSub: {
+    color: '#FF7A1A',
+    fontSize: 11,
+  },
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  replyBarText: {
+    flex: 1,
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF7A1A',
+    paddingLeft: 8,
+  },
+  replyBarLabel: {
+    color: '#FF7A1A',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  replyBarContent: {
+    color: '#ccc',
+    fontSize: 13,
+  },
+  replyBarClose: {
+    color: '#888',
+    fontSize: 18,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+  },
+  forwardOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  forwardBox: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    padding: 16,
+    maxHeight: '70%',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#333',
+  },
+  forwardTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  forwardRow: {
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#222',
+  },
+  forwardName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  forwardId: {
+    color: '#888',
+    fontSize: 12,
+  },
+  forwardEmpty: {
+    color: '#888',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  forwardCancel: {
+    marginTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333',
+    paddingTop: 12,
+  },
+  forwardCancelText: {
+    color: '#FF7A1A',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });

@@ -1,16 +1,21 @@
+import type { RealtimeChannel } from '@supabase/supabase-js';
+
 import { HOT_KEYS, hotKV } from '../storage/mmkv';
 import { useUzzapStore } from '../store';
 import type { BuddyPresence } from '../store/slices/presenceSlice';
-import type { PresenceStatus, Stanza } from '../types/protocol';
-import { buildIq, escapeXml, newIqId, wsClient } from './wsClient';
+import type { PresenceStatus } from '../types/protocol';
+import { supabase } from './supabaseClient';
 
 /**
- * Presence publish / subscribe.
+ * Presence publish / subscribe on Supabase.
  *
- * The legacy server has no standard XMPP `<presence>` negotiation: status is
- * published through the `registry` target (`status-update` / `update-idle-state`,
- * spec §6–§7) and buddy presence arrives as registry profile updates. Inbound
- * stanzas are normalised into {@link BuddyPresence} entries on the store.
+ * The legacy server negotiated status through the `registry` target; here
+ * presence is published by writing our own `profiles` row (status,
+ * status_message, last_seen) and tracked live on a Realtime Presence channel.
+ * Buddy presence arrives via `profiles` row changes plus the shared presence
+ * channel. Typing state rides the same presence channel payload.
+ *
+ * Public API is unchanged so screens keep working without modification.
  */
 
 function toWireShow(status: PresenceStatus): string {
@@ -45,30 +50,23 @@ function fromWireShow(value: string): PresenceStatus {
   }
 }
 
-function readFirst(keys: Record<string, string>, candidates: readonly string[]): string {
-  for (const key of candidates) {
-    const value = keys[key];
-    if (value !== undefined && value !== '') return value;
+async function selfIdentity(): Promise<{ uid: string; username: string } | null> {
+  try {
+    const { data } = await supabase.auth.getUser();
+    const uid = data.user?.id;
+    if (!uid) return null;
+    const username = useUzzapStore.getState().user?.id ?? data.user?.email ?? uid;
+    return { uid, username };
+  } catch {
+    return null;
   }
-  return '';
 }
 
 export class PresenceService {
   private readonly subscriptions = new Set<string>();
-
-  constructor() {
-    wsClient.addListener((event) => {
-      if (event.type === 'presence') this.handlePresence(event.stanza);
-      else if (event.type === 'state') {
-        useUzzapStore.getState().setConnectionState(event.state);
-        if (event.state === 'online') {
-          useUzzapStore.getState().setSelfStatus(useUzzapStore.getState().selfStatus);
-        }
-      } else if (event.type === 'disconnect') {
-        useUzzapStore.getState().setSelfStatus('offline');
-      }
-    });
-  }
+  private presenceChannel: RealtimeChannel | null = null;
+  private profilesChannel: RealtimeChannel | null = null;
+  private typingTimer: ReturnType<typeof setTimeout> | null = null;
 
   /* ---------------------------------------------------------------------- */
   /* Publishing                                                             */
@@ -84,23 +82,33 @@ export class PresenceService {
       JSON.stringify({ status, statusMessage: statusMessage ?? null, updatedAt: Date.now() }),
     );
 
-    if (!wsClient.isOnline()) return;
+    const self = await selfIdentity();
+    if (!self) return;
 
-    const children =
-      `<state>${escapeXml(toWireShow(status))}</state>` +
-      (statusMessage ? `<status-message>${escapeXml(statusMessage)}</status-message>` : '');
+    try {
+      await supabase
+        .from('profiles')
+        .update({
+          status: toWireShow(status),
+          status_message: statusMessage ?? null,
+          last_seen: Math.floor(Date.now() / 1000),
+          updated_at: Math.floor(Date.now() / 1000),
+        })
+        .eq('id', self.uid);
+    } catch {
+      // Offline — local state already updated; reconciles on reconnect.
+    }
 
-    wsClient.sendIq(
-      buildIq({
-        id: newIqId('REG'),
-        type: 'set',
-        action: 'status-update',
-        target: 'registry',
-        amazProtocol: 'registry',
-        children,
-      }),
-    );
-    await Promise.resolve();
+    try {
+      await this.presenceChannel?.track({
+        username: self.username,
+        status: toWireShow(status),
+        typing: false,
+        online_at: new Date().toISOString(),
+      });
+    } catch {
+      // Channel not joined yet — profiles row carries the state.
+    }
   }
 
   async publishOnline(statusMessage?: string): Promise<void> {
@@ -119,84 +127,145 @@ export class PresenceService {
     return this.publishStatus('invisible');
   }
 
-  /** `update-idle-state` (spec §10.4). */
+  /** Map the legacy idle signal onto away/available. */
   async setIdle(isIdle: boolean): Promise<void> {
-    if (!wsClient.isOnline()) return;
-    wsClient.sendIdleState(isIdle);
-    await Promise.resolve();
+    const store = useUzzapStore.getState();
+    if (isIdle) {
+      await this.publishStatus('away', store.selfStatusMessage ?? undefined);
+    } else {
+      await this.publishStatus(store.selfStatus === 'away' ? 'available' : store.selfStatus);
+    }
   }
 
   /* ---------------------------------------------------------------------- */
   /* Subscriptions                                                          */
   /* ---------------------------------------------------------------------- */
 
-  async subscribe(buddyId: string): Promise<void> {
-    this.subscriptions.add(buddyId);
-    if (!wsClient.isOnline()) return;
-    wsClient.sendIq(
-      buildIq({
-        id: newIqId('REG'),
-        type: 'get',
-        action: 'query-profile',
-        target: 'registry',
-        amazProtocol: 'registry',
-        vcard: { username: buddyId },
-      }),
-    );
-    await Promise.resolve();
+  async subscribe(buddyId?: string): Promise<void> {
+    if (buddyId) this.subscriptions.add(buddyId);
+    await this.ensureChannels();
   }
 
-  async unsubscribe(buddyId: string): Promise<void> {
-    this.subscriptions.delete(buddyId);
-    await Promise.resolve();
+  async unsubscribe(buddyId?: string): Promise<void> {
+    if (buddyId) this.subscriptions.delete(buddyId);
+    if (!buddyId || this.subscriptions.size === 0) {
+      await this.teardownChannels();
+    }
   }
 
   getSubscriptions(): string[] {
     return [...this.subscriptions];
   }
 
+  private async ensureChannels(): Promise<void> {
+    if (!this.presenceChannel) {
+      const self = await selfIdentity();
+      const channel = supabase.channel('presence', {
+        config: { presence: { key: self?.username ?? 'anonymous' } },
+      });
+      channel
+        .on('presence', { event: 'sync' }, () => {
+          const state = channel.presenceState<{
+            username: string;
+            status: string;
+            typing: boolean;
+          }>();
+          this.applyPresenceState(state);
+        })
+        .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED' && self) {
+            try {
+              await channel.track({
+                username: self.username,
+                status: toWireShow(useUzzapStore.getState().selfStatus),
+                typing: false,
+                online_at: new Date().toISOString(),
+              });
+            } catch {
+              // Presence is best-effort.
+            }
+          }
+        });
+      this.presenceChannel = channel;
+    }
+
+    if (!this.profilesChannel) {
+      const channel = supabase
+        .channel('profiles-presence')
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'profiles' },
+          (payload) => {
+            const row = payload.new as {
+              username?: string;
+              status?: string;
+              status_message?: string | null;
+              last_seen?: number | null;
+            };
+            if (!row.username) return;
+            const presence: BuddyPresence = {
+              status: fromWireShow(row.status ?? 'offline'),
+              statusMessage: row.status_message || undefined,
+              lastSeen:
+                typeof row.last_seen === 'number' && row.last_seen > 0
+                  ? row.last_seen
+                  : undefined,
+              updatedAt: Date.now(),
+            };
+            useUzzapStore.getState().setPresence(row.username, presence);
+          },
+        )
+        .subscribe();
+      this.profilesChannel = channel;
+    }
+  }
+
+  private async teardownChannels(): Promise<void> {
+    const channels = [this.presenceChannel, this.profilesChannel];
+    this.presenceChannel = null;
+    this.profilesChannel = null;
+    for (const channel of channels) {
+      if (channel) {
+        try {
+          await supabase.removeChannel(channel);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  private applyPresenceState(
+    state: Record<string, { username: string; status: string; typing: boolean }[]>,
+  ): void {
+    const store = useUzzapStore.getState();
+    const selfUsername = store.user?.id;
+    const seen = new Set<string>();
+    for (const metas of Object.values(state)) {
+      for (const meta of metas) {
+        if (!meta.username || meta.username === selfUsername) continue;
+        seen.add(meta.username);
+        store.setPresence(meta.username, {
+          ...(store.presence[meta.username] ?? {}),
+          status: fromWireShow(meta.status ?? 'available'),
+          updatedAt: Date.now(),
+        } as BuddyPresence);
+        store.setTyping(meta.username, Boolean(meta.typing));
+      }
+    }
+    // Anyone previously seen as online who vanished from presence state
+    // goes offline (they closed the app without unsubscribing).
+    for (const userId of Object.keys(store.presence)) {
+      if (!seen.has(userId) && store.presence[userId]?.status !== 'offline') {
+        store.setPresence(userId, { status: 'offline', updatedAt: Date.now() });
+        store.setTyping(userId, false);
+      }
+    }
+  }
+
   /* ---------------------------------------------------------------------- */
   /* Inbound                                                                */
   /* ---------------------------------------------------------------------- */
-
-  handlePresence(stanza: Stanza): BuddyPresence | null {
-    const keys = stanza.keys;
-    const rawUserId = readFirst(keys, [
-      'presence.from',
-      'presence.amaz-from',
-      'presence.jid',
-      'iq/vcard/username',
-    ]);
-    if (!rawUserId) return null;
-
-    const userId = rawUserId.split('/')[0] ?? rawUserId;
-    const show = readFirst(keys, [
-      'presence.show',
-      'presence/state',
-      'presence.state',
-      'iq/vcard/show',
-      'iq/vcard/status',
-      'presence.type',
-    ]);
-    const statusMessage = readFirst(keys, [
-      'presence.status',
-      'presence/status',
-      'presence.status-message',
-      'iq/vcard/status-message',
-    ]);
-    const lastSeenRaw = readFirst(keys, ['presence.last-seen', 'presence.ts', 'presence.lastSeen']);
-    const lastSeen = Number(lastSeenRaw);
-
-    const presence: BuddyPresence = {
-      status: fromWireShow(show),
-      statusMessage: statusMessage || undefined,
-      lastSeen: Number.isFinite(lastSeen) && lastSeen > 0 ? lastSeen : undefined,
-      updatedAt: Date.now(),
-    };
-
-    useUzzapStore.getState().setPresence(userId, presence);
-    return presence;
-  }
 
   getPresence(buddyId: string): BuddyPresence | undefined {
     return useUzzapStore.getState().presence[buddyId];
@@ -208,6 +277,40 @@ export class PresenceService {
 
   setTyping(buddyId: string, isTyping: boolean): void {
     useUzzapStore.getState().setTyping(buddyId, isTyping);
+    if (this.typingTimer) {
+      clearTimeout(this.typingTimer);
+      this.typingTimer = null;
+    }
+    if (!isTyping) {
+      void this.trackTyping(false);
+      return;
+    }
+    void this.trackTyping(true);
+    // Auto-clear a stuck typing flag after 10 s without renewal.
+    this.typingTimer = setTimeout(() => {
+      useUzzapStore.getState().setTyping(buddyId, false);
+      void this.trackTyping(false);
+    }, 10_000);
+  }
+
+  /** Publish our own typing flag (normally driven by the chat composer). */
+  async publishTyping(isTyping: boolean): Promise<void> {
+    await this.trackTyping(isTyping);
+  }
+
+  private async trackTyping(isTyping: boolean): Promise<void> {
+    const self = await selfIdentity();
+    if (!self || !this.presenceChannel) return;
+    try {
+      await this.presenceChannel.track({
+        username: self.username,
+        status: toWireShow(useUzzapStore.getState().selfStatus),
+        typing: isTyping,
+        online_at: new Date().toISOString(),
+      });
+    } catch {
+      // best effort
+    }
   }
 }
 

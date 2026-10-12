@@ -178,5 +178,6 @@ export interface AuthSession {
   token?: string;
   phase: AuthPhase;
   mobileMasked?: string;
+  mobile?: string;
   issuedAt: number;
 }

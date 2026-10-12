@@ -5,8 +5,6 @@ import * as Location from 'expo-location';
 import { Alert } from 'react-native';
 
 import type { MessageType } from '../types/models';
-import type { OutboundWireMessage } from '../types/protocol';
-import { wsClient } from './wsClient';
 
 export interface MediaMessageInput {
   type: 'image' | 'voice' | 'location' | 'file';
@@ -299,30 +297,6 @@ export class MediaService {
     } catch (error) {
       throw error;
     }
-  }
-
-  /* ---------------------------------------------------------------------- */
-  /* Sending media                                                          */
-  /* ---------------------------------------------------------------------- */
-
-  async sendMedia(
-    recipientId: string,
-    media: ProcessedMedia,
-    _conversationId?: string,
-  ): Promise<void> {
-    const wireMessage: OutboundWireMessage = {
-      to: recipientId,
-      body: media.content,
-      protocol: media.protocol as any,
-      location: media.meta.locationName as string | undefined,
-    };
-
-    // For images/voice/files, we include metadata in the message
-    // The legacy protocol uses the body for content and meta for additional data
-    wsClient.sendMessage({
-      ...wireMessage,
-      msgId: `media_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-    });
   }
 
   /* ---------------------------------------------------------------------- */

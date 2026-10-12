@@ -18,6 +18,12 @@ export interface ChatRoomsSlice {
   removeChatRoomUser: (roomId: string, userId: string) => void;
 
   appendChatMessage: (message: ChatMessage) => void;
+  upsertChatMessage: (message: ChatMessage) => void;
+  updateChatMessageStatus: (
+    roomId: string,
+    messageId: string,
+    status: ChatMessage['status'],
+  ) => void;
   setChatMessagesByRoom: (messages: ChatMessage[]) => void;
   clearChatMessages: (roomId: string) => void;
 
@@ -91,6 +97,23 @@ export const createChatRoomsSlice: UzzapSlice<ChatRoomsSlice> = (set, get) => ({
       if (room && !message.isRead && message.senderId !== get().user?.id) {
         room.unreadCount += 1;
       }
+    }),
+
+  upsertChatMessage: (message) =>
+    set((state) => {
+      const history = state.chatMessagesByRoom[message.roomId] ?? [];
+      const index = history.findIndex((m) => m.id === message.id);
+      if (index >= 0) history[index] = message;
+      else history.push(message);
+      state.chatMessagesByRoom[message.roomId] = history;
+    }),
+
+  updateChatMessageStatus: (roomId, messageId, status) =>
+    set((state) => {
+      const history = state.chatMessagesByRoom[roomId];
+      if (!history) return;
+      const message = history.find((m) => m.id === messageId);
+      if (message) message.status = status;
     }),
 
   setChatMessagesByRoom: (messages) =>

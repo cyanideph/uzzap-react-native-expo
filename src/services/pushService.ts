@@ -3,8 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { getString, removeString, setString } from '../storage/preferences';
-import { useUzzapStore } from '../store';
-import { buildIq, newIqId, wsClient } from './wsClient';
+import { supabase } from './supabaseClient';
 
 /**
  * Push notification integration.
@@ -82,24 +81,19 @@ export class PushService {
     }
   }
 
-  /** Best-effort registration of the device token with the backend. */
+  /** Best-effort registration of the device token on our own profile row. */
   async sendTokenToServer(token: string): Promise<void> {
-    if (!wsClient.isOnline()) return;
-    const userId = useUzzapStore.getState().user?.id;
-    wsClient.sendIq(
-      buildIq({
-        id: newIqId('REG'),
-        type: 'set',
-        action: 'save-private',
-        target: 'registry',
-        amazProtocol: 'registry',
-        vcard: {
-          username: userId,
-          extra: { 'push-token': token, 'push-platform': Platform.OS },
-        },
-      }),
-    );
-    await Promise.resolve();
+    try {
+      const { data } = await supabase.auth.getUser();
+      const uid = data.user?.id;
+      if (!uid) return;
+      await supabase
+        .from('profiles')
+        .update({ push_token: token, push_platform: Platform.OS })
+        .eq('id', uid);
+    } catch {
+      // Best effort — local registration is what matters for notifications.
+    }
   }
 
   async unregister(): Promise<void> {

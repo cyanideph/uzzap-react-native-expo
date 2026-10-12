@@ -23,13 +23,8 @@ import { saslPlainToken, utf8Decode } from './protobuf';
 /**
  * WebSocket transport for the Uzzap protocol.
  *
- * This provides a WebSocket-based alternative to the raw TCP transport in wsClient.ts.
- * It implements the same protocol (XML stream, SASL PLAIN, etc.) but over WebSocket
- * instead of raw TCP, making it compatible with Expo Web and browsers.
- *
- * The server must support WebSocket connections at wss://connect.kolipri.com:5280
- * or a compatible endpoint. If the legacy server doesn't support WebSocket,
- * a proxy/bridge service would be needed.
+ * RETIRED: the app backend is now Supabase (`supabaseClient.ts` + Realtime).
+ * Kept for reference only; nothing connects through it anymore.
  */
 
 const DEFAULT_WS_HOST = 'wss://connect.kolipri.com:5280';

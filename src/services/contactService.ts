@@ -1,25 +1,24 @@
 import { eq } from 'drizzle-orm';
 import * as Contacts from 'expo-contacts';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { db } from '../db/client';
 import { buddies as buddiesTable } from '../db/schema';
 import type { BuddyRow } from '../db/schema';
 import { useUzzapStore } from '../store';
 import type { Buddy } from '../types/models';
-import type { PresenceStatus, Stanza } from '../types/protocol';
-import { buildIq, buildVCard, newIqId, wsClient } from './wsClient';
-import type { VCardData } from './wsClient';
+import type { PresenceStatus } from '../types/protocol';
+import { supabase } from './supabaseClient';
 
 /**
- * Roster / contact management.
+ * Roster / contact management on Supabase (`buddies` table).
  *
- * The zustand `buddies` slice is the primary in-memory + persisted store (it
- * keeps `amazCid`, which the SQLite mirror omits because the `buddies` table
- * predates it). SQLite (`buddies`) is used as a durable searchable cache.
+ * The zustand `buddies` slice stays the primary in-memory store. SQLite
+ * (`buddies`) remains a durable searchable cache. The server of record is
+ * now Supabase Postgres instead of the legacy `registry` IQ protocol, and
+ * roster changes arrive over a Realtime channel instead of `query-roster`.
  *
- * Remote operations map to the `registry` protocol actions (spec §7):
- * `query-roster`, `save-contact`, `delete-contact`, `rename-group`,
- * `init-store-contact` / `store-contact`.
+ * Public API is unchanged so screens keep working without modification.
  */
 
 export interface ContactInput {
@@ -31,18 +30,40 @@ export interface ContactInput {
   amazCid?: string;
 }
 
+interface BuddyDbRow {
+  buddy_id: string;
+  display_name: string;
+  phone_number: string | null;
+  status: PresenceStatus;
+  status_message: string | null;
+  is_blocked: boolean;
+  is_uzzap_user: boolean;
+  last_seen: number | null;
+  avatar: string | null;
+  groups: string[];
+  amaz_cid: string | null;
+}
+
 function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, '');
   if (digits.length > 10) return digits.slice(-10);
   return digits;
 }
 
-function parseGroups(value: string | undefined): string[] {
-  if (!value) return [];
-  return value
-    .split(',')
-    .map((group) => group.trim())
-    .filter((group) => group.length > 0);
+function toBuddy(row: BuddyDbRow, fallback?: Buddy): Buddy {
+  return {
+    userId: row.buddy_id,
+    displayName: row.display_name || fallback?.displayName || row.buddy_id,
+    phoneNumber: row.phone_number ?? fallback?.phoneNumber,
+    status: row.status ?? fallback?.status ?? 'offline',
+    statusMessage: row.status_message ?? fallback?.statusMessage,
+    isBlocked: row.is_blocked ?? fallback?.isBlocked ?? false,
+    isUzzapUser: row.is_uzzap_user ?? true,
+    lastSeen: row.last_seen ?? fallback?.lastSeen,
+    avatar: row.avatar ?? fallback?.avatar,
+    groups: row.groups ?? fallback?.groups ?? [],
+    amazCid: row.amaz_cid ?? fallback?.amazCid,
+  };
 }
 
 function rowFromDb(row: BuddyRow, amazCid: string | undefined): Buddy {
@@ -61,12 +82,17 @@ function rowFromDb(row: BuddyRow, amazCid: string | undefined): Buddy {
   };
 }
 
-export class ContactService {
-  constructor() {
-    wsClient.addListener((event) => {
-      if (event.type === 'roster') void this.handleRoster(event.stanza);
-    });
+async function ownerId(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data.user?.id ?? null;
+  } catch {
+    return null;
   }
+}
+
+export class ContactService {
+  private rosterChannel: RealtimeChannel | null = null;
 
   /* ---------------------------------------------------------------------- */
   /* Local reads                                                            */
@@ -126,14 +152,27 @@ export class ContactService {
       amazCid: input.amazCid ?? existing?.amazCid,
     };
 
-    this.sendRegistryAction('save-contact', {
-      username: buddy.userId,
-      amazCid: buddy.amazCid,
-      displayname: buddy.displayName,
-      phone: buddy.phoneNumber,
-      email: input.email,
-      groups: buddy.groups,
-    });
+    const owner = await ownerId();
+    if (owner) {
+      await supabase.from('buddies').upsert(
+        {
+          owner_id: owner,
+          buddy_id: buddy.userId,
+          display_name: buddy.displayName,
+          phone_number: buddy.phoneNumber ?? null,
+          status: buddy.status,
+          status_message: buddy.statusMessage ?? null,
+          is_blocked: buddy.isBlocked,
+          is_uzzap_user: buddy.isUzzapUser,
+          last_seen: buddy.lastSeen ?? null,
+          avatar: buddy.avatar ?? null,
+          groups: buddy.groups,
+          amaz_cid: buddy.amazCid ?? null,
+          updated_at: now,
+        },
+        { onConflict: 'owner_id,buddy_id' },
+      );
+    }
 
     useUzzapStore.getState().upsertBuddy(buddy);
     await this.persistBuddies([buddy], now);
@@ -145,11 +184,10 @@ export class ContactService {
   }
 
   async deleteContact(userId: string): Promise<void> {
-    const buddy = this.getContact(userId);
-    this.sendRegistryAction('delete-contact', {
-      amazCid: buddy?.amazCid ?? userId,
-      username: buddy?.amazCid ? undefined : userId,
-    });
+    const owner = await ownerId();
+    if (owner) {
+      await supabase.from('buddies').delete().eq('owner_id', owner).eq('buddy_id', userId);
+    }
 
     useUzzapStore.getState().removeBuddy(userId);
     await db.delete(buddiesTable).where(eq(buddiesTable.userId, userId)).run();
@@ -159,38 +197,48 @@ export class ContactService {
     const buddy = this.getContact(userId);
     if (!buddy) return;
     const updated: Buddy = { ...buddy, isBlocked };
+    const owner = await ownerId();
+    if (owner) {
+      await supabase
+        .from('buddies')
+        .update({ is_blocked: isBlocked, updated_at: Math.floor(Date.now() / 1000) })
+        .eq('owner_id', owner)
+        .eq('buddy_id', userId);
+    }
     useUzzapStore.getState().upsertBuddy(updated);
     await this.persistBuddies([updated]);
-    this.sendRegistryAction('save-contact', {
-      username: userId,
-      amazCid: buddy.amazCid,
-      displayname: buddy.displayName,
-      extra: { blocked: isBlocked ? 'yes' : 'no' },
-    });
   }
 
   async renameGroup(oldName: string, newName: string): Promise<void> {
-    const id = newIqId('REG');
-    wsClient.sendIq(
-      buildIq({
-        id,
-        type: 'set',
-        action: 'rename-group',
-        target: '___registry___',
-        amazProtocol: 'registry',
-        vcard: { groups: [oldName], extra: { 'new-name': newName } },
-      }),
-    );
-
     const store = useUzzapStore.getState();
+    const owner = await ownerId();
+    const now = Math.floor(Date.now() / 1000);
+    const affected = Object.values(store.buddies).filter((b) => b.groups.includes(oldName));
+
+    if (owner) {
+      for (const buddy of affected) {
+        const groups = buddy.groups.map((g) => (g === oldName ? newName : g));
+        await supabase
+          .from('buddies')
+          .update({ groups, updated_at: now })
+          .eq('owner_id', owner)
+          .eq('buddy_id', buddy.userId);
+      }
+    }
+
     store.setGroups(store.groups.map((group) => (group === oldName ? newName : group)));
-    for (const buddy of Object.values(store.buddies)) {
-      if (!buddy.groups.includes(oldName)) continue;
+    for (const buddy of affected) {
       store.upsertBuddy({
         ...buddy,
         groups: buddy.groups.map((group) => (group === oldName ? newName : group)),
       });
     }
+    await this.persistBuddies(
+      affected.map((b) => ({
+        ...b,
+        groups: b.groups.map((group) => (group === oldName ? newName : group)),
+      })),
+    );
   }
 
   /* ---------------------------------------------------------------------- */
@@ -200,49 +248,80 @@ export class ContactService {
   async syncRoster(): Promise<Buddy[]> {
     const store = useUzzapStore.getState();
     store.setSyncingRoster(true);
-    const wait = this.waitForRoster(12_000);
-    wsClient.sendRosterQuery();
-    const stanza = await wait;
-    store.setSyncingRoster(false);
-    if (stanza) return this.handleRoster(stanza);
-    return this.listContacts();
+    try {
+      const owner = await ownerId();
+      if (!owner) return this.listContacts();
+      const { data, error } = await supabase
+        .from('buddies')
+        .select(
+          'buddy_id, display_name, phone_number, status, status_message, is_blocked, is_uzzap_user, last_seen, avatar, groups, amaz_cid',
+        )
+        .eq('owner_id', owner);
+      if (error) throw error;
+      const list: Buddy[] = (data ?? []).map((row) =>
+        toBuddy(row as unknown as BuddyDbRow, store.buddies[(row as unknown as BuddyDbRow).buddy_id]),
+      );
+      if (list.length > 0) {
+        store.upsertBuddies(list);
+        const allGroups = new Set(store.groups);
+        for (const buddy of list) for (const group of buddy.groups) allGroups.add(group);
+        store.setGroups([...allGroups]);
+        store.setLastRosterSync(Math.floor(Date.now() / 1000));
+        await this.persistBuddies(list);
+      }
+      return list;
+    } catch {
+      return this.listContacts();
+    } finally {
+      store.setSyncingRoster(false);
+    }
   }
 
-  async handleRoster(stanza: Stanza): Promise<Buddy[]> {
+  /** Live roster updates for the signed-in owner. Idempotent. */
+  subscribeRoster(): () => void {
+    if (this.rosterChannel) return () => undefined;
+    const channel = supabase
+      .channel('roster')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'buddies' },
+        (payload) => {
+          void this.handleRosterChange(
+            payload.eventType as string,
+            (payload.new ?? payload.old ?? {}) as Record<string, unknown>,
+          );
+        },
+      )
+      .subscribe();
+    this.rosterChannel = channel;
+    return () => {
+      void supabase.removeChannel(channel);
+      if (this.rosterChannel === channel) this.rosterChannel = null;
+    };
+  }
+
+  unsubscribeRoster(): void {
+    if (!this.rosterChannel) return;
+    const channel = this.rosterChannel;
+    this.rosterChannel = null;
+    void supabase.removeChannel(channel);
+  }
+
+  private async handleRosterChange(
+    eventType: string,
+    row: Record<string, unknown>,
+  ): Promise<void> {
+    const buddyId = row.buddy_id as string | undefined;
+    if (!buddyId) return;
     const store = useUzzapStore.getState();
-    const arrays = stanza.arrays;
-    const usernames = arrays['iq/vcard/username'] ?? [];
-    const cids = arrays['iq/vcard/amaz-cid'] ?? [];
-    const displayNames = arrays['iq/vcard/displayname'] ?? [];
-    const phones = arrays['iq/vcard/phone'] ?? [];
-    const groups = arrays['iq/vcard/groups'] ?? [];
-
-    const list: Buddy[] = usernames.map((username, index) => {
-      const existing = store.buddies[username];
-      return {
-        userId: username,
-        displayName: displayNames[index] ?? username,
-        phoneNumber: phones[index],
-        status: existing?.status ?? ('offline' as PresenceStatus),
-        statusMessage: existing?.statusMessage,
-        isBlocked: existing?.isBlocked ?? false,
-        isUzzapUser: true,
-        lastSeen: existing?.lastSeen,
-        avatar: existing?.avatar,
-        groups: parseGroups(groups[index]),
-        amazCid: cids[index],
-      };
-    });
-
-    if (list.length > 0) {
-      store.upsertBuddies(list);
-      const allGroups = new Set(store.groups);
-      for (const buddy of list) for (const group of buddy.groups) allGroups.add(group);
-      store.setGroups([...allGroups]);
-      store.setLastRosterSync(Math.floor(Date.now() / 1000));
-      await this.persistBuddies(list);
+    if (eventType === 'DELETE') {
+      store.removeBuddy(buddyId);
+      await db.delete(buddiesTable).where(eq(buddiesTable.userId, buddyId)).run();
+      return;
     }
-    return list;
+    const buddy = toBuddy(row as unknown as BuddyDbRow, store.buddies[buddyId]);
+    store.upsertBuddy(buddy);
+    await this.persistBuddies([buddy]);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -264,8 +343,9 @@ export class ContactService {
     });
 
     const existing = useUzzapStore.getState().buddies;
-    const vcards: VCardData[] = [];
+    const now = Math.floor(Date.now() / 1000);
     let matched = 0;
+    let uploaded = 0;
 
     for (const contact of data) {
       const phone = contact.phoneNumbers?.[0]?.number;
@@ -276,58 +356,50 @@ export class ContactService {
         (buddy) => buddy.phoneNumber && normalizePhone(buddy.phoneNumber) === normalized,
       );
       if (match) matched += 1;
-      vcards.push({
-        username: match?.userId ?? normalized,
-        displayname: contact.name ?? normalized,
-        phone: normalized,
-      });
+      const buddy: Buddy = {
+        userId: match?.userId ?? normalized,
+        displayName: contact.name ?? match?.displayName ?? normalized,
+        phoneNumber: normalized,
+        status: match?.status ?? 'offline',
+        statusMessage: match?.statusMessage,
+        isBlocked: match?.isBlocked ?? false,
+        isUzzapUser: Boolean(match),
+        lastSeen: match?.lastSeen,
+        avatar: match?.avatar,
+        groups: match?.groups ?? [],
+        amazCid: match?.amazCid,
+      };
+      const owner = await ownerId();
+      if (owner) {
+        await supabase.from('buddies').upsert(
+          {
+            owner_id: owner,
+            buddy_id: buddy.userId,
+            display_name: buddy.displayName,
+            phone_number: buddy.phoneNumber ?? null,
+            status: buddy.status,
+            status_message: buddy.statusMessage ?? null,
+            is_blocked: buddy.isBlocked,
+            is_uzzap_user: buddy.isUzzapUser,
+            last_seen: buddy.lastSeen ?? null,
+            avatar: buddy.avatar ?? null,
+            groups: buddy.groups,
+            amaz_cid: buddy.amazCid ?? null,
+            updated_at: now,
+          },
+          { onConflict: 'owner_id,buddy_id' },
+        );
+      }
+      useUzzapStore.getState().upsertBuddy(buddy);
+      await this.persistBuddies([buddy], now);
+      uploaded += 1;
     }
-
-    if (vcards.length === 0) return { uploaded: 0, matched };
-    await this.uploadContacts(vcards);
-    return { uploaded: vcards.length, matched };
-  }
-
-  private async uploadContacts(vcards: VCardData[]): Promise<void> {
-    wsClient.sendIq(
-      buildIq({
-        id: newIqId('REG'),
-        type: 'set',
-        action: 'init-store-contact',
-        target: 'registry',
-        amazProtocol: 'registry',
-      }),
-    );
-    const children = vcards.map((vcard) => buildVCard(vcard)).join('');
-    wsClient.sendIq(
-      buildIq({
-        id: newIqId('REG'),
-        type: 'set',
-        action: 'store-contact',
-        target: 'registry',
-        amazProtocol: 'registry',
-        children,
-      }),
-    );
-    await Promise.resolve();
+    return { uploaded, matched };
   }
 
   /* ---------------------------------------------------------------------- */
   /* Internals                                                              */
   /* ---------------------------------------------------------------------- */
-
-  private sendRegistryAction(action: string, vcard: VCardData): void {
-    wsClient.sendIq(
-      buildIq({
-        id: newIqId('REG'),
-        type: 'set',
-        action,
-        target: 'registry',
-        amazProtocol: 'registry',
-        vcard,
-      }),
-    );
-  }
 
   private async persistBuddies(list: Buddy[], now = Math.floor(Date.now() / 1000)): Promise<void> {
     for (const buddy of list) {
@@ -365,21 +437,6 @@ export class ContactService {
         })
         .run();
     }
-  }
-
-  private waitForRoster(timeoutMs: number): Promise<Stanza | null> {
-    return new Promise((resolve) => {
-      const unsubscribe = wsClient.addListener((event) => {
-        if (event.type === 'roster') {
-          unsubscribe();
-          resolve(event.stanza);
-        }
-      });
-      setTimeout(() => {
-        unsubscribe();
-        resolve(null);
-      }, timeoutMs);
-    });
   }
 }
 

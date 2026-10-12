@@ -4,6 +4,9 @@ A React Native + Expo port of the legacy **JavaUzzap (Uzzap) J2ME instant-messag
 (3rd Brand Pte Ltd, 2007–2008, `com.kolipri.*`, 171 classes, ~667KB).
 Targets Android (API 24+) and Expo Go / Web where transport allows.
 
+Backend: **Supabase** (Auth + Postgres + Realtime + Storage). The legacy raw-TCP
+server protocol is retired; §3 below is kept as reference documentation.
+
 > This file consolidates and replaces `JAVAUZZAP_TO_REACT_NATIVE_EXPO_PLAN.md`,
 > `JAVAUZZAP_UI_UX_SPEC.md`, and `PROTOCOL_SPEC.md`.
 > The `javauzzap/` source checkout and its `docs/` are a separate repository and were left untouched.
@@ -18,7 +21,7 @@ Targets Android (API 24+) and Expo Go / Web where transport allows.
 | Language | TypeScript 5.6 (`tsc --noEmit`, strict) |
 | State | Zustand + Immer, hybrid persist (SecureStore / MMKV / AsyncStorage) |
 | Database | Drizzle ORM + expo-sqlite (`uzzap.db`, WAL, FK on) |
-| Transport | Raw TCP (`react-native-tcp-socket`) + WebSocket variant (`wsClientWeb.ts`) |
+| Backend | Supabase Auth + Postgres (RLS) + Realtime + Storage (`supabaseClient.ts`); legacy TCP (`wsClient.ts`) retired |
 | Tests | Jest + ts-jest (9 unit tests), Detox E2E config |
 | CI | `.github/workflows/ci.yml` — Node 20, `npm ci`, lint, typecheck, test, expo-doctor |
 
@@ -42,7 +45,7 @@ Provider order: Migrations → GestureHandler → SafeArea → Theme → Auth �
 
 ---
 
-## 3. Wire Protocol Reference (legacy server)
+## 3. Wire Protocol Reference (legacy server — retired, kept for reference)
 
 Custom XML stream over **plain TCP** (not XMPP): SASL **PLAIN only**, namespace prefixes
 stripped, stanzas flattened to `path`/`path.attr` keys.
@@ -107,7 +110,8 @@ emoticon sprites remain open.)
 
 ```bash
 npm install --legacy-peer-deps   # peer conflicts are pinned via .npmrc
-npx expo start                   # Expo Go (TCP transport needs dev build)
+cp .env.example .env             # fill in EXPO_PUBLIC_SUPABASE_URL / ANON_KEY
+npx expo start                   # Expo Go
 npx expo prebuild && npm run android
 npm test                         # jest, 9/9
 npm run lint                     # eslint, clean
@@ -117,6 +121,14 @@ npx expo-doctor
 
 Detox E2E is configured (`.detoxrc.json`, `e2e/`) but has never been executed —
 requires emulator + native build.
+
+### Supabase one-time setup (required)
+1. Paste `supabase/schema.sql` into the dashboard SQL editor
+   (project `ybpzfubyipllkdzdtuvp`) and Run — creates tables, RLS, Realtime
+   publication, and the `chat-media` bucket. Idempotent.
+2. Auth works out of the box: registration uses email OTP (6-digit code on
+   the existing PIN screen). Optionally disable *Confirm email* in
+   Authentication settings to skip verification entirely.
 
 ---
 

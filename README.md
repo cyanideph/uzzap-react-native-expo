@@ -21,7 +21,7 @@ server protocol is retired; §3 below is kept as reference documentation.
 | Language | TypeScript 5.6 (`tsc --noEmit`, strict) |
 | State | Zustand + Immer, hybrid persist (SecureStore / MMKV / AsyncStorage) |
 | Database | Drizzle ORM + expo-sqlite (`uzzap.db`, WAL, FK on) |
-| Backend | Supabase Auth + Postgres (RLS) + Realtime + Storage (`supabaseClient.ts`); legacy TCP (`wsClient.ts`) retired |
+| Backend | Supabase Auth + Postgres (RLS) + Realtime + Storage (`supabaseClient.ts`); legacy TCP stack deleted |
 | Tests | Jest + ts-jest (9 unit tests), Detox E2E config |
 | CI | `.github/workflows/ci.yml` — Node 20, `npm ci`, lint, typecheck, test, expo-doctor |
 
@@ -32,8 +32,8 @@ server protocol is retired; §3 below is kept as reference documentation.
 ```
 app/(auth)            login · register · pin · splash
 app/(app)             contacts · chat · chat/[id] · rooms · room/[id] · add-buddy · settings (+blocked) · help
-src/services          wsClient (TCP) · wsClientWeb (WS) · auth · contact · message · chatRoom
-                      · presence · media · push · smsValidation · e2eEncryption · settings · offlineQueue · protobuf
+src/services          supabaseClient · auth · contact · message · chatRoom
+                      · presence · media · push · e2eEncryption · settings · offlineQueue
 src/store             auth · contacts · messages · chatRooms · presence · settings (+ selectors)
 src/db                schema.ts (8 tables) · client.ts · useMigrations.ts
 src/theme             tokens · uzzap/default palettes · dark derivation · ThemeProvider · theme.ini parser
@@ -157,7 +157,7 @@ requires emulator + native build.
 - ✗ Chatroom-tones · battery-info · offline-settings · subscription/billing screens
 
 ### Infrastructure
-- √ TCP + WebSocket transports · protobuf module · push registration + background-message notifications · SMS-listener placeholder · Signal service skeleton · Jest (9) · Detox config · CI workflow green
+- √ Supabase transports (Postgres + Realtime + Storage) · push registration + background-message notifications · Signal service skeleton · Jest (9) · Detox config · CI workflow green
 - ✗ Native-only: SMS receive, libsignal bindings, foreground service, boot receiver · screenshot-diff QA · E2E run · coverage ≥80% · signed AAB/store assets
 
 ---

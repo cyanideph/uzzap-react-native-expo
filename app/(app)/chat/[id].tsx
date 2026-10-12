@@ -1,4 +1,4 @@
-import { Redirect, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActionSheetIOS,
@@ -47,6 +47,23 @@ function formatTime(timestamp: number): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+const EMOTICONS: readonly string[] = [
+  '😀', '😁', '😂', '🤣', '😊', '😍', '😘', '😎',
+  '🤔', '😐', '🙄', '😴', '😷', '🤒', '😢', '😭',
+  '😡', '🤯', '🥳', '😇', '🤠', '👻', '💀', '🤖',
+  '👍', '👎', '👏', '🙏', '💪', '👀', '🧠', '❤️',
+  '💔', '🔥', '🎉', '🎂', '⚽', '🚗', '✈️', '🏠',
+  '📱', '💻', '📷', '🎵', '☕', '🍕', '🌹', '⭐',
+];
+
+const EMOJI_ONLY_RE =
+  /^(?:\p{Extended_Pictographic}\uFE0F?|\u200D|[\u2600-\u27BF\u2B00-\u2BFF\uFE00-\uFE0F\s])+$/u;
+
+function isEmojiOnly(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.length > 0 && trimmed.length <= 12 && EMOJI_ONLY_RE.test(trimmed);
+}
+
 function formatDay(timestamp: number): string {
   const date = toDate(timestamp);
   const today = new Date();
@@ -82,6 +99,7 @@ export default function ChatScreen(): React.ReactElement {
   const [imageViewer, setImageViewer] = useState<{ uri: string; mimeType?: string } | null>(null);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [showForwardPicker, setShowForwardPicker] = useState(false);
+  const [showEmoticons, setShowEmoticons] = useState(false);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const soundRef = React.useRef<Audio.Sound | null>(null);
 
@@ -380,6 +398,18 @@ export default function ChatScreen(): React.ReactElement {
               | undefined;
             const forwardedFrom = message.meta?.forwardedFrom as string | undefined;
             const duration = message.meta?.duration as number | undefined;
+            const emojiOnly =
+              message.type === 'text' && !reply && !forwardedFrom && isEmojiOnly(message.content);
+            if (emojiOnly) {
+              return (
+                <Pressable
+                  onLongPress={() => handleLongPress(message)}
+                  style={[styles.bubbleRow, mine ? styles.alignEnd : styles.alignStart]}
+                >
+                  <Text style={styles.emojiLarge}>{message.content}</Text>
+                </Pressable>
+              );
+            }
             return (
               <Pressable
                 onLongPress={() => handleLongPress(message)}
@@ -554,12 +584,48 @@ export default function ChatScreen(): React.ReactElement {
                 <Text style={styles.actionSheetItemIcon}>🗑️</Text>
                 <Text style={styles.actionSheetItemTextDestructive}>Delete</Text>
               </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (!longPressMessage) return;
+                  const target = longPressMessage;
+                  setShowActionSheet(false);
+                  setLongPressMessage(null);
+                  router.push({
+                    pathname: '/message/[id]',
+                    params: { id: target.id, conversation: target.conversationId },
+                  });
+                }}
+                style={styles.actionSheetItem}
+              >
+                <Text style={styles.actionSheetItemIcon}>ℹ️</Text>
+                <Text style={styles.actionSheetItemText}>Info</Text>
+              </Pressable>
               <Pressable onPress={() => setShowActionSheet(false)} style={styles.actionSheetCancel}>
                 <Text style={styles.actionSheetCancelText}>Cancel</Text>
               </Pressable>
             </View>
           </View>
         )}
+
+        {showEmoticons ? (
+          <View style={styles.emoticonSheet}>
+            <FlatList
+              data={EMOTICONS}
+              keyExtractor={(e, i) => `${e}-${i}`}
+              numColumns={8}
+              renderItem={({ item: emoji }) => (
+                <Pressable
+                  onPress={() => setDraft((d) => `${d}${emoji}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Insert ${emoji}`}
+                  style={styles.emoticonCell}
+                >
+                  <Text style={styles.emoticonGlyph}>{emoji}</Text>
+                </Pressable>
+              )}
+            />
+          </View>
+        ) : null}
 
         {replyTo ? (
           <View style={styles.replyBar}>
@@ -587,9 +653,18 @@ export default function ChatScreen(): React.ReactElement {
           <Pressable
             onPress={showMediaActionSheet}
             accessibilityRole="button"
+            accessibilityLabel="Attach media"
             style={styles.mediaButton}
           >
             <Text style={styles.mediaButtonText}>+</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setShowEmoticons((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel="Open emoticon picker"
+            style={styles.mediaButton}
+          >
+            <Text style={styles.mediaButtonText}>😊</Text>
           </Pressable>
           <TextInput
             value={draft}
@@ -1047,6 +1122,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  emojiLarge: {
+    fontSize: 44,
+    paddingVertical: 4,
+  },
+  emoticonSheet: {
+    maxHeight: 220,
+    backgroundColor: '#1a1a1a',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#333',
+    padding: 8,
+  },
+  emoticonCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  emoticonGlyph: {
+    fontSize: 26,
   },
   dayHeader: {
     alignSelf: 'center',

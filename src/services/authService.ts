@@ -10,22 +10,27 @@ import {
 import { useUzzapStore } from '../store';
 import type { AuthTokens, StoredUser } from '../store/slices/authSlice';
 import type { AuthPhase, AuthSession } from '../types/models';
-import type { AuthCredentials, Stanza } from '../types/protocol';
-import { buildIq, newIqId, wsClient } from './wsClient';
-import type { VCardData } from './wsClient';
-import { smsValidationService } from './smsValidationService';
+import type { AuthCredentials } from '../types/protocol';
+import { supabase } from './supabaseClient';
 
 /**
- * Account lifecycle against the legacy registry/validation targets.
+ * Account lifecycle on Supabase (Auth + `profiles` table).
  *
- * Flow (spec §7, §12.5):
- *   register  → `pre-register` IQ → `register` IQ → SMS PIN → `confirmation`
- *   login     → TCP connect → SASL PLAIN → bind → `query-roster`
- *   logout    → disconnect + wipe SecureStore
+ * Flow (mirrors the legacy PIN flow 1:1 so the UI is unchanged):
+ *   register  → `signUp(email, password)` → email OTP code → `verifyOtp`
+ *   login     → resolve username → email → `signInWithPassword`
+ *   logout    → `signOut` + wipe SecureStore
+ *
+ * The legacy `needs-pin` phase now means "email verification code pending":
+ * Supabase sends a 6-digit OTP that the existing PIN screen collects.
+ * If the project has email confirmation disabled, sign-up returns a session
+ * immediately and PIN validation short-circuits to `authenticated`.
  *
  * Credentials are persisted through SecureStore only; the plaintext password is
  * never written to SQLite or AsyncStorage.
  */
+
+const EMAIL_KEY = 'uzzap.auth.email';
 
 export interface RegisterInput {
   username: string;
@@ -65,17 +70,6 @@ function maskMobile(mobile: string): string {
   return `${head}${'*'.repeat(Math.max(0, digits.length - 4))}${tail}`;
 }
 
-function extractIqError(stanza: Stanza): string | undefined {
-  const keys = stanza.keys;
-  const direct = keys['iq/error.amaz-error'];
-  if (direct) return direct;
-  for (const [key, value] of Object.entries(keys)) {
-    if (key.startsWith('iq/error') && value) return value;
-  }
-  if (keys['iq.type'] === 'error') return 'unknown-error';
-  return undefined;
-}
-
 export class AuthService {
   /* ---------------------------------------------------------------------- */
   /* Persistence                                                            */
@@ -88,6 +82,10 @@ export class AuthService {
     ]);
     if (!username || password === null) return null;
     return { username, password };
+  }
+
+  async getStoredEmail(): Promise<string | null> {
+    return getSecureItem(EMAIL_KEY);
   }
 
   async getStoredSession(): Promise<AuthSession | null> {
@@ -108,10 +106,11 @@ export class AuthService {
     };
   }
 
-  private async persistCredentials(credentials: AuthCredentials): Promise<void> {
+  private async persistCredentials(credentials: AuthCredentials, email?: string): Promise<void> {
     await Promise.all([
       setSecureItem(SECURE_KEYS.username, credentials.username),
       setSecureItem(SECURE_KEYS.password, credentials.password),
+      ...(email ? [setSecureItem(EMAIL_KEY, email)] : []),
     ]);
   }
 
@@ -120,6 +119,66 @@ export class AuthService {
       setSecureJson(SECURE_KEYS.authSession, session),
       setSecureItem(SECURE_KEYS.authToken, tokens.accessToken),
     ]);
+  }
+
+  /** Resolve a legacy username to its Supabase Auth email. */
+  private async emailForUsername(username: string): Promise<string | null> {
+    if (username.includes('@')) return username;
+    const [storedEmail, storedUser] = await Promise.all([
+      this.getStoredEmail(),
+      getSecureItem(SECURE_KEYS.username),
+    ]);
+    if (storedEmail && storedUser === username) return storedEmail;
+    return null;
+  }
+
+  private async applySession(
+    userId: string,
+    accessToken: string,
+    expiresAt: number,
+    issuedAt: number,
+    authUid: string,
+  ): Promise<{ session: AuthSession; tokens: AuthTokens; user: StoredUser }> {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('username, display_name, phone_number, first_name, last_name, created_at')
+      .eq('id', authUid)
+      .maybeSingle();
+
+    const displayName =
+      [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') ||
+      profile?.display_name ||
+      profile?.username ||
+      userId;
+
+    const storedUser: StoredUser = {
+      id: (profile?.username as string | undefined) ?? userId,
+      phoneNumber: (profile?.phone_number as string | null | undefined) ?? null,
+      firstName: (profile?.first_name as string | null | undefined) ?? null,
+      lastName: (profile?.last_name as string | null | undefined) ?? null,
+      email: null,
+      createdAt: Number(profile?.created_at ?? 0) || issuedAt,
+      lastLogin: issuedAt,
+    };
+    const session: AuthSession = {
+      userId: storedUser.id,
+      username: storedUser.id,
+      displayName,
+      phase: 'authenticated',
+      mobileMasked: profile?.phone_number ? maskMobile(profile.phone_number) : undefined,
+      mobile: profile?.phone_number ?? undefined,
+      issuedAt,
+    };
+    const tokens: AuthTokens = { accessToken, expiresAt };
+
+    await this.persistSession(session, tokens);
+
+    const state = useUzzapStore.getState();
+    state.setUser(storedUser);
+    state.setTokens(tokens);
+    state.setPhase('authenticated');
+    state.setLoggingIn(false);
+    return { session, tokens, user: storedUser };
   }
 
   /* ---------------------------------------------------------------------- */
@@ -132,16 +191,26 @@ export class AuthService {
     initial.setLoginError(null);
     initial.setPhase('unknown');
 
-    let mobile: string | undefined;
-    const unsubscribe = wsClient.addListener((event) => {
-      if (event.type === 'auth-success' && event.mobile) mobile = event.mobile;
-    });
-
     try {
-      await wsClient.connect({
-        authenticate: true,
-        credentials: { username: userId, password },
-      });
+      const email = await this.emailForUsername(userId.trim());
+      if (!email) {
+        throw new Error('Unknown user on this device — sign in with your email address.');
+      }
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (!data.session) {
+        throw new Error('Email not confirmed — check your inbox for the verification code.');
+      }
+      await this.persistCredentials({ username: userId.trim(), password }, email);
+      const issuedAt = Date.now();
+      const { session } = await this.applySession(
+        userId.trim(),
+        data.session.access_token,
+        data.session.expires_at ?? Math.floor(issuedAt / 1000) + 3600,
+        issuedAt,
+        data.session.user.id,
+      );
+      return { ok: true, session, phase: 'authenticated', mobile: session.mobile };
     } catch (error) {
       const message = toMessage(error);
       const state = useUzzapStore.getState();
@@ -149,172 +218,132 @@ export class AuthService {
       state.setLoginError(message);
       state.setPhase('unauthenticated');
       return { ok: false, error: message, phase: 'unauthenticated' };
-    } finally {
-      unsubscribe();
     }
-
-    const issuedAt = Date.now();
-    const storedUser: StoredUser = {
-      id: userId,
-      phoneNumber: null,
-      firstName: null,
-      lastName: null,
-      email: null,
-      createdAt: issuedAt,
-      lastLogin: issuedAt,
-    };
-    const session: AuthSession = {
-      userId,
-      username: userId,
-      displayName: userId,
-      phase: 'authenticated',
-      mobileMasked: mobile ? maskMobile(mobile) : undefined,
-      issuedAt,
-    };
-    const tokens: AuthTokens = {
-      accessToken: `${userId}:${issuedAt}`,
-      expiresAt: Math.floor(issuedAt / 1000) + 86_400,
-    };
-
-    await this.persistCredentials({ username: userId, password });
-    await this.persistSession(session, tokens);
-
-    const state = useUzzapStore.getState();
-    state.setUser(storedUser);
-    state.setTokens(tokens);
-    state.setPhase('authenticated');
-    state.setLoggingIn(false);
-
-    // Roster is requested by the engine on `online`; wait briefly for it so the
-    // contact list is warm before login resolves (best-effort).
-    await this.waitForRoster(8_000).catch(() => null);
-
-    return { ok: true, session, phase: 'authenticated', mobile };
   }
 
   /* ---------------------------------------------------------------------- */
-  /* Registration / PIN                                                     */
+  /* Registration / PIN (email OTP)                                         */
   /* ---------------------------------------------------------------------- */
 
   async register(input: RegisterInput): Promise<AuthResult> {
+    if (!input.email) {
+      return { ok: false, error: 'Email is required for registration.', phase: 'unauthenticated' };
+    }
     try {
-      if (!wsClient.isConnected()) {
-        await wsClient.connect({
-          authenticate: false,
-          credentials: { username: input.username, password: input.password },
-        });
+      const { data, error } = await supabase.auth.signUp({
+        email: input.email,
+        password: input.password,
+        options: {
+          data: {
+            username: input.username,
+            display_name: input.displayName ?? input.username,
+            phone_number: input.phoneNumber ?? null,
+            first_name: input.firstName ?? null,
+            last_name: input.lastName ?? null,
+          },
+        },
+      });
+      if (error) throw error;
+      if (data.user && (data.user.identities?.length ?? 1) === 0) {
+        return { ok: false, error: 'duplicate-username', phase: 'unauthenticated' };
       }
-    } catch (error) {
-      return { ok: false, error: toMessage(error), phase: 'unauthenticated' };
-    }
 
-    const vcard: VCardData = {
-      username: input.username,
-      displayname: input.displayName ?? input.username,
-      phone: input.phoneNumber,
-      email: input.email,
-      groups: input.groups,
-    };
-
-    const preId = newIqId('REG');
-    const preXml = buildIq({
-      id: preId,
-      type: 'set',
-      action: 'pre-register',
-      target: 'registry',
-      amazProtocol: 'registry',
-      method: 'pin',
-      vcard,
-    });
-
-    try {
-      const preResponse = await wsClient.sendIqAndWait(
-        preXml,
-        (stanza) => stanza.tag === 'iq' && stanza.keys['iq.id'] === preId,
-        20_000,
+      await this.persistCredentials(
+        { username: input.username, password: input.password },
+        input.email,
       );
-      const preError = extractIqError(preResponse);
-      if (preError) return { ok: false, error: preError, phase: 'unauthenticated' };
+
+      if (data.session && data.user) {
+        // Email confirmation disabled — already authenticated.
+        await this.ensureProfile(input, data.user.id);
+        const issuedAt = Date.now();
+        const { session } = await this.applySession(
+          input.username,
+          data.session.access_token,
+          data.session.expires_at ?? Math.floor(issuedAt / 1000) + 3600,
+          issuedAt,
+          data.session.user.id,
+        );
+        return { ok: true, session, phase: 'authenticated' };
+      }
+
+      useUzzapStore.getState().setPhase('needs-pin');
+      return { ok: true, phase: 'needs-pin' };
     } catch (error) {
       return { ok: false, error: toMessage(error), phase: 'unauthenticated' };
     }
-
-    const regId = newIqId('REG');
-    const regVcard: VCardData = {
-      ...vcard,
-      extra: { model: input.deviceModel ?? 'react-native' },
-    };
-    const regXml = buildIq({
-      id: regId,
-      type: 'set',
-      action: 'register',
-      target: 'registry',
-      amazProtocol: 'registry',
-      method: 'pin',
-      vcard: regVcard,
-    });
-
-    try {
-      const regResponse = await wsClient.sendIqAndWait(
-        regXml,
-        (stanza) => stanza.tag === 'iq' && stanza.keys['iq.id'] === regId,
-        20_000,
-      );
-      const regError = extractIqError(regResponse);
-      if (regError) return { ok: false, error: regError, phase: 'unauthenticated' };
-    } catch (error) {
-      return { ok: false, error: toMessage(error), phase: 'unauthenticated' };
-    }
-
-    // Persist credentials for the follow-up PIN validation / login.
-    await this.persistCredentials({ username: input.username, password: input.password });
-    useUzzapStore.getState().setPhase('needs-pin');
-
-    // Set pending registration so SMS listener knows which user to validate
-    await smsValidationService.setPendingRegistration(input.username);
-
-    return { ok: true, phase: 'needs-pin' };
   }
 
+  private async ensureProfile(
+    input: RegisterInput,
+    authUserId: string,
+  ): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+    await supabase.from('profiles').upsert(
+      {
+        id: authUserId,
+        username: input.username,
+        display_name: input.displayName ?? input.username,
+        phone_number: input.phoneNumber ?? null,
+        first_name: input.firstName ?? null,
+        last_name: input.lastName ?? null,
+        status: 'offline',
+        created_at: now,
+        updated_at: now,
+      },
+      { onConflict: 'id' },
+    );
+  }
+
+  /** Verify the 6-digit email OTP collected by the PIN screen. */
   async validatePin(pin: string): Promise<AuthResult> {
-    if (!wsClient.isConnected()) {
-      const credentials = await this.getStoredCredentials();
-      if (!credentials) {
-        return { ok: false, error: 'missing-credentials', phase: 'needs-pin' };
+    // Already authenticated (autoconfirm projects) — nothing to verify.
+    try {
+      const { data: existing } = await supabase.auth.getSession();
+      if (existing.session) {
+        useUzzapStore.getState().setPhase('authenticated');
+        return { ok: true, phase: 'authenticated' };
       }
-      try {
-        await wsClient.connect({ authenticate: true, credentials });
-      } catch (error) {
-        return { ok: false, error: toMessage(error), phase: 'needs-pin' };
-      }
+    } catch {
+      // fall through to OTP verification
     }
 
-    const credentials = await this.getStoredCredentials();
-    const id = newIqId('VALIDATE');
-    const xml = buildIq({
-      id,
-      type: 'set',
-      action: 'confirmation',
-      target: 'validation',
-      amazProtocol: 'validation',
-      method: 'pin',
-      vcard: { username: credentials?.username, pin },
-    });
-
+    const email = await this.getStoredEmail();
+    if (!email) {
+      return { ok: false, error: 'missing-credentials', phase: 'needs-pin' };
+    }
     try {
-      const response = await wsClient.sendIqAndWait(
-        xml,
-        (stanza) => stanza.tag === 'iq' && stanza.keys['iq.id'] === id,
-        20_000,
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token: pin.trim(),
+        type: 'signup',
+      });
+      if (error) throw error;
+      if (!data.session || !data.user) {
+        return { ok: false, error: 'register-invalid-pin', phase: 'needs-pin' };
+      }
+      const credentials = await this.getStoredCredentials();
+      await this.ensureProfile(
+        {
+          username: credentials?.username ?? email,
+          password: '',
+          email,
+        },
+        data.user.id,
       );
-      const error = extractIqError(response);
-      if (error) return { ok: false, error, phase: 'needs-pin' };
+      // Backfill the username-appropriate display values on next login hydrate.
+      const issuedAt = Date.now();
+      const { session } = await this.applySession(
+        credentials?.username ?? email,
+        data.session.access_token,
+        data.session.expires_at ?? Math.floor(issuedAt / 1000) + 3600,
+        issuedAt,
+        data.user.id,
+      );
+      return { ok: true, session, phase: 'authenticated' };
     } catch (error) {
       return { ok: false, error: toMessage(error), phase: 'needs-pin' };
     }
-
-    useUzzapStore.getState().setPhase('authenticated');
-    return { ok: true, phase: 'authenticated' };
   }
 
   /** UI-facing alias for {@link validatePin}. */
@@ -322,43 +351,15 @@ export class AuthService {
     return this.validatePin(pin);
   }
 
-  /**
-   * Request a fresh SMS validation PIN (`pin-request` on the `validation`
-   * target — spec §12.5). Used by the "resend code" affordance on the PIN
-   * screen.
-   */
-  async resendPin(userId: string): Promise<AuthResult> {
-    try {
-      if (!wsClient.isConnected()) {
-        const credentials = await this.getStoredCredentials();
-        await wsClient.connect({
-          authenticate: false,
-          credentials: credentials ?? { username: userId, password: '' },
-        });
-      }
-    } catch (error) {
-      return { ok: false, error: toMessage(error), phase: 'needs-pin' };
+  /** Resend the email OTP — the "resend code" affordance on the PIN screen. */
+  async resendPin(_userId: string): Promise<AuthResult> {
+    const email = await this.getStoredEmail();
+    if (!email) {
+      return { ok: false, error: 'missing-credentials', phase: 'needs-pin' };
     }
-
-    const id = newIqId('PINREQ');
-    const xml = buildIq({
-      id,
-      type: 'set',
-      action: 'pin-request',
-      target: 'validation',
-      amazProtocol: 'validation',
-      method: 'pin',
-      vcard: { username: userId },
-    });
-
     try {
-      const response = await wsClient.sendIqAndWait(
-        xml,
-        (stanza) => stanza.tag === 'iq' && stanza.keys['iq.id'] === id,
-        20_000,
-      );
-      const error = extractIqError(response);
-      if (error) return { ok: false, error, phase: 'needs-pin' };
+      const { error } = await supabase.auth.resend({ type: 'signup', email });
+      if (error) throw error;
       return { ok: true, phase: 'needs-pin' };
     } catch (error) {
       return { ok: false, error: toMessage(error), phase: 'needs-pin' };
@@ -370,45 +371,57 @@ export class AuthService {
   /* ---------------------------------------------------------------------- */
 
   async refreshToken(): Promise<AuthResult> {
-    const credentials = await this.getStoredCredentials();
-    if (!credentials) {
-      return { ok: false, error: 'missing-credentials', phase: 'unauthenticated' };
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error) throw error;
+      if (!data.session) throw new Error('missing-credentials');
+      const credentials = await this.getStoredCredentials();
+      const issuedAt = Date.now();
+      const { session } = await this.applySession(
+        credentials?.username ?? data.user?.email ?? 'me',
+        data.session.access_token,
+        data.session.expires_at ?? Math.floor(issuedAt / 1000) + 3600,
+        issuedAt,
+        data.session.user.id,
+      );
+      return { ok: true, session, phase: 'authenticated' };
+    } catch {
+      const credentials = await this.getStoredCredentials();
+      if (!credentials) {
+        return { ok: false, error: 'missing-credentials', phase: 'unauthenticated' };
+      }
+      return this.login(credentials.username, credentials.password);
     }
-    wsClient.disconnect('refresh');
-    return this.login(credentials.username, credentials.password);
   }
 
   async logout(): Promise<void> {
-    wsClient.disconnect('logout');
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Best effort — local wipe below is what matters.
+    }
     await clearSecureStore();
     useUzzapStore.getState().signOut();
-    // Clear any pending SMS registration
-    await smsValidationService.clearPendingRegistration();
   }
 
-  /** Restore a stored session at cold start without a network round-trip. */
+  /** Restore the Supabase session at cold start (refreshes when expired). */
   async restoreSession(): Promise<AuthSession | null> {
-    const session = await this.getStoredSession();
-    const credentials = await this.getStoredCredentials();
-    if (!session || !credentials) return null;
-    const state = useUzzapStore.getState();
-    state.setPhase(session.phase);
-    return session;
-  }
-
-  private waitForRoster(timeoutMs: number): Promise<Stanza | null> {
-    return new Promise((resolve) => {
-      const unsubscribe = wsClient.addListener((event) => {
-        if (event.type === 'roster') {
-          unsubscribe();
-          resolve(event.stanza);
-        }
-      });
-      setTimeout(() => {
-        unsubscribe();
-        resolve(null);
-      }, timeoutMs);
-    });
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) return null;
+      const credentials = await this.getStoredCredentials();
+      const issuedAt = Date.now();
+      const { session } = await this.applySession(
+        credentials?.username ?? data.session.user.email ?? 'me',
+        data.session.access_token,
+        data.session.expires_at ?? Math.floor(issuedAt / 1000) + 3600,
+        issuedAt,
+        data.session.user.id,
+      );
+      return session;
+    } catch {
+      return null;
+    }
   }
 }
 

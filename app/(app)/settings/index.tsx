@@ -14,8 +14,6 @@ import {
 } from '@/components/ui';
 import { useUzzapStore } from '@/store';
 import { useTheme } from '@/theme';
-import { wsClient } from '@/services/wsClient';
-import { PROTOCOL } from '@/types/protocol';
 import type { ThemeName } from '@/theme';
 
 const THEME_OPTIONS: readonly { value: ThemeName; label: string }[] = [
@@ -111,11 +109,8 @@ export default function SettingsScreen(): React.ReactElement {
       proxyHost,
       proxyPort: port,
     });
-    // Apply to wsClient
-    wsClient.configure({
-      hosts: [proxyHost],
-      ports: [port],
-    });
+    // Note: the Supabase endpoint is fixed per build (.env); these values
+    // are retained as preferences only.
     setShowProxySettings(false);
   };
 
@@ -243,7 +238,6 @@ export default function SettingsScreen(): React.ReactElement {
               onChangeText={(v) => {
                 const val = parseInt(v, 10) || 900;
                 updateSettings({ keepAliveInterval: val });
-                wsClient.configure({ keepAliveMs: val * 1000, ports: [settings.proxyPort] });
               }}
               keyboardType="numeric"
               style={styles.timeoutInput}
@@ -252,9 +246,9 @@ export default function SettingsScreen(): React.ReactElement {
         />
         <SettingRow
           label="Proxy"
+          description="Endpoint is fixed per build; stored as preference"
           right={switchRow(settings.proxyEnabled, (next) => {
             updateSettings({ proxyEnabled: next });
-            if (!next) wsClient.configure({ hosts: [PROTOCOL.DEFAULT_HOST] });
           })}
         />
         <SettingRow

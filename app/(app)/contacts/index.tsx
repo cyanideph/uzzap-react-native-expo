@@ -118,6 +118,7 @@ export default function ContactsScreen(): React.ReactElement {
             const unread = unreadByBuddy[item.userId] ?? 0;
             return (
               <Pressable
+                testID="contact-item"
                 onPress={() => router.push({ pathname: '/chat/[id]', params: { id: item.userId } })}
                 onLongPress={() =>
                   router.push({ pathname: '/user/[id]', params: { id: item.userId } })

@@ -83,7 +83,7 @@ export default function PinScreen(): React.ReactElement {
   const canVerify = pin.length === PIN_LENGTH && !verifying;
 
   return (
-    <Screen>
+    <Screen testID="pin-screen">
       <TitleBar title="VERIFY NUMBER" onBack={() => router.replace('/register')} />
       <View style={[styles.body, { padding: theme.space.lg }]}>
         <Text

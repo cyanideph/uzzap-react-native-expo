@@ -17,6 +17,10 @@ import { base64DecodeUtf8, saslPlainToken, utf8Decode } from './protobuf';
 /**
  * `wsClient` — raw TCP transport for the legacy Uzzap IM protocol.
  *
+ * RETIRED: the app backend is now Supabase (`supabaseClient.ts`). This module
+ * is kept for reference and for its XML builders/parsers, which other modules
+ * still import as pure functions. Nothing connects through it anymore.
+ *
  * Despite the name this is **not** a WebSocket client: the legacy server
  * (`connect.kolipri.com`) only accepts plain TCP with a bespoke XML stream and
  * SASL PLAIN (see `PROTOCOL_SPEC.md`). `react-native-tcp-socket` provides the

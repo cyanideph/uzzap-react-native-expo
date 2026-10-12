@@ -114,6 +114,7 @@ export default function RoomsScreen(): React.ReactElement {
         <View style={styles.createForm}>
           <SectionHeader title="CREATE ROOM" />
           <TextInput
+            testID="room-name-input"
             value={newRoomName}
             onChangeText={setNewRoomName}
             placeholder="Room name"

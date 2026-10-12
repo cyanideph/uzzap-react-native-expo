@@ -57,7 +57,7 @@ export default function LoginScreen(): React.ReactElement {
   };
 
   return (
-    <Screen edges={['top', 'bottom']}>
+    <Screen edges={['top', 'bottom']} testID="login-screen">
       <TitleBar title="LOGIN" subtitle="Sign in to Uzzap" />
       <KeyboardAvoidingView
         style={styles.flex}
@@ -81,6 +81,7 @@ export default function LoginScreen(): React.ReactElement {
           </View>
 
           <TextField
+            testID="userId-input"
             label="User ID"
             value={userId}
             onChangeText={setUserId}
@@ -93,6 +94,7 @@ export default function LoginScreen(): React.ReactElement {
 
           <View>
             <TextField
+              testID="password-input"
               label="Password"
               value={password}
               onChangeText={setPassword}
@@ -124,6 +126,7 @@ export default function LoginScreen(): React.ReactElement {
               Auto-login on next launch
             </Text>
             <Switch
+              testID="auto-login-switch"
               value={autoLogin}
               onValueChange={setAutoLogin}
               trackColor={{
@@ -153,6 +156,7 @@ export default function LoginScreen(): React.ReactElement {
           onLeftPress={() => router.push('/register')}
           onRightPress={() => void handleLogin()}
           rightDisabled={!canSubmit}
+          rightTestID="login-button"
         />
       </KeyboardAvoidingView>
     </Screen>

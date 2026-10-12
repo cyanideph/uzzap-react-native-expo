@@ -1,28 +1,27 @@
 import type { AppSettings } from '../types/models';
-import { getStoredCredentials } from './authService';
 import { contactService } from './contactService';
 import { messageService } from './messageService';
-import { smsValidationService } from './smsValidationService';
-// Side-effect import: the presence singleton registers the connection-state /
-// disconnect listeners on `wsClient` from its constructor.
-import './presenceService';
+import { chatRoomService } from './chatRoomService';
+import { presenceService } from './presenceService';
+// Side-effect import: the chat-room singleton owns no transport listeners;
+// subscriptions are started explicitly in `startAuthenticatedSession`.
 import { pushService } from './pushService';
 import { settingsService } from './settingsService';
-import { wsClient } from './wsClient';
+import { isSupabaseConfigured, supabase } from './supabaseClient';
 
 /**
- * Runtime bootstrap.
+ * Runtime bootstrap (Supabase backend).
  *
- * The domain services (`contactService`, `messageService`, `presenceService`)
- * subscribe to `wsClient` from their constructors, so referencing them here
- * guarantees the transport is observed by the whole domain layer.
- * `bootstrapServices()` performs the one-off, post-migration app-start work;
- * `startAuthenticatedSession()` warms the session once auth resolves.
+ * The legacy raw-TCP transport (`wsClient.ts`) is retired; domain services
+ * now talk to Supabase Postgres + Realtime. `bootstrapServices()` performs
+ * the one-off, post-migration app-start work; `startAuthenticatedSession()`
+ * warms the session once auth resolves.
  */
 
 let servicesPromise: Promise<AppSettings | null> | null = null;
 let settingsPromise: Promise<AppSettings | null> | null = null;
 let pushRegistered = false;
+let realtimeStarted = false;
 
 /** Load persisted settings exactly once, after migrations have run. */
 export function loadSettingsOnce(): Promise<AppSettings | null> {
@@ -33,16 +32,13 @@ export function loadSettingsOnce(): Promise<AppSettings | null> {
 }
 
 /**
- * Post-migration bootstrap: configure notifications and load settings. The
- * service singletons are already instantiated by this module's imports.
+ * Post-migration bootstrap: configure notifications and load settings.
  * Idempotent — safe to call from multiple mount points.
  */
 export function bootstrapServices(): Promise<AppSettings | null> {
   if (!servicesPromise) {
     servicesPromise = (async () => {
       pushService.configure();
-      // Start SMS validation listener for registration PIN codes
-      void smsValidationService.startListening();
       return loadSettingsOnce();
     })();
   }
@@ -60,15 +56,24 @@ async function registerPushOnce(): Promise<void> {
   }
 }
 
-/** Open the transport for a restored session (no-op when already online). */
-async function ensureConnected(): Promise<void> {
-  if (wsClient.isOnline()) return;
-  const credentials = await getStoredCredentials();
-  if (!credentials) return;
+/** Start Realtime channels once the user is authenticated. Best-effort. */
+function startRealtimeOnce(): void {
+  if (realtimeStarted) return;
+  realtimeStarted = true;
   try {
-    await wsClient.connect({ authenticate: true, credentials });
+    messageService.subscribeMessages();
   } catch {
-    // The engine owns reconnection/backoff; surface nothing here.
+    realtimeStarted = false;
+  }
+  try {
+    void presenceService.subscribe();
+  } catch {
+    // Presence is best-effort.
+  }
+  try {
+    chatRoomService.subscribeChat();
+  } catch {
+    // Best effort.
   }
 }
 
@@ -76,16 +81,33 @@ async function ensureConnected(): Promise<void> {
 async function hydrateStoreFromDatabase(): Promise<void> {
   await contactService.hydrateFromDatabase().catch(() => undefined);
   await messageService.hydrateFromDatabase().catch(() => undefined);
+  await chatRoomService.hydrateFromDatabase().catch(() => undefined);
+}
+
+/** Pull server state into the store (Supabase → store → SQLite mirror). */
+async function syncFromServer(): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) return;
+  } catch {
+    return;
+  }
+  await contactService.syncRoster().catch(() => undefined);
+  await messageService.syncFromServer().catch(() => undefined);
+  await chatRoomService.syncRooms().catch(() => undefined);
+  await messageService.flushOfflineQueue().catch(() => undefined);
 }
 
 /**
- * Warm the authenticated session: load settings, reconnect the transport,
- * register for push and hydrate local data. Safe to call on every transition
- * to `signed-in`; every step is idempotent.
+ * Warm the authenticated session: load settings, start Realtime, register
+ * for push and hydrate local data. Safe to call on every transition to
+ * `signed-in`; every step is idempotent.
  */
 export async function startAuthenticatedSession(): Promise<void> {
   await loadSettingsOnce();
-  await ensureConnected();
+  startRealtimeOnce();
   await registerPushOnce();
   await hydrateStoreFromDatabase();
+  await syncFromServer();
 }

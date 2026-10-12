@@ -1,6 +1,8 @@
 import type { MessageProtocol, PresenceStatus, ChatRoomType, ChatMessageType } from './protocol';
 
-export type MessageType = 'text' | 'sms' | 'esms' | 'contact' | 'system' | 'image' | 'location';
+export type { ChatRoomType, ChatMessageType };
+
+export type MessageType = 'text' | 'sms' | 'esms' | 'contact' | 'system' | 'image' | 'location' | 'voice' | 'file';
 
 export type MessageStatus = 'pending' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 

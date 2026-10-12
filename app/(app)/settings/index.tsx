@@ -29,7 +29,7 @@ export default function SettingsScreen(): React.ReactElement {
   const { signOut } = useAuth();
   const settings = useUzzapStore((state) => state.settings);
   const updateSettings = useUzzapStore((state) => state.updateSettings);
-  const _user = useUzzapStore((state) => state.user);
+  useUzzapStore((state) => state.user);
 
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeMobile, setShowChangeMobile] = useState(false);
@@ -220,7 +220,7 @@ export default function SettingsScreen(): React.ReactElement {
               value={String(settings.connectionTimeout)}
               onChangeText={(v) => updateSettings({ connectionTimeout: parseInt(v, 10) || 60 })}
               keyboardType="numeric"
-              style={styles.smallInput}
+              style={styles.timeoutInput}
             />
           }
         />
@@ -233,10 +233,10 @@ export default function SettingsScreen(): React.ReactElement {
               onChangeText={(v) => {
                 const val = parseInt(v, 10) || 900;
                 updateSettings({ keepAliveInterval: val });
-                wsClient.configure({ keepAliveMs: val * 1000 });
+                wsClient.configure({ keepAliveMs: val * 1000, ports: [settings.proxyPort] });
               }}
               keyboardType="numeric"
-              style={styles.smallInput}
+              style={styles.timeoutInput}
             />
           }
         />
@@ -244,7 +244,7 @@ export default function SettingsScreen(): React.ReactElement {
           label="Proxy"
           right={switchRow(settings.proxyEnabled, (next) => {
             updateSettings({ proxyEnabled: next });
-            if (!next) wsClient.configure({ host: PROTOCOL.DEFAULT_HOST });
+            if (!next) wsClient.configure({ hosts: [PROTOCOL.DEFAULT_HOST] });
           })}
         />
         <SettingRow
@@ -357,5 +357,8 @@ const styles = StyleSheet.create({
   },
   logout: {
     padding: 16,
+  },
+  timeoutInput: {
+    width: 80,
   },
 });

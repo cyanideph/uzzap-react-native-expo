@@ -98,7 +98,7 @@ export default function ContactsScreen(): React.ReactElement {
           onChangeText={setSearchQuery}
           placeholder="Search buddies..."
           placeholderTextColor={theme.colors.text.disabled}
-          style={styles.searchInput}
+          style={styles.searchInput as any}
         />
       </View>
       {Object.keys(buddies).length === 0 ? (
@@ -247,6 +247,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#fff',
     backgroundColor: '#1a1a1a',
-    placeholderTextColor: '#666',
   },
 });

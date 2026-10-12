@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+import { getString, setString, removeString } from '../storage/preferences';
+
 /**
  * SMS Validation Listener for registration PIN codes.
  *
@@ -47,12 +49,10 @@ export class SmsValidationService implements SmsValidationListener {
   }
 
   async setPendingRegistration(userId: string): Promise<void> {
-    const { setString } = await import('../storage/preferences');
     await setString(PENDING_REG_KEY, JSON.stringify({ userId, timestamp: Date.now() }));
   }
 
   async getPendingRegistration(): Promise<{ userId: string; timestamp: number } | null> {
-    const { getString } = await import('../storage/preferences');
     const raw = await getString(PENDING_REG_KEY);
     if (!raw) return null;
     try {
@@ -63,7 +63,6 @@ export class SmsValidationService implements SmsValidationListener {
   }
 
   async clearPendingRegistration(): Promise<void> {
-    const { removeString } = await import('../storage/preferences');
     await removeString(PENDING_REG_KEY);
   }
 }

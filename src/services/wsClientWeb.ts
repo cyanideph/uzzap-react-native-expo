@@ -9,14 +9,16 @@ import type {
   MessageProtocol,
   Stanza,
   WsClientEvent,
+} from '../types/protocol';
+import type {
   WsClientCallbacks,
   WsClientOptions,
   ConnectOptions,
   WsClientListener,
   PendingMessage,
   OutboundMessageInput,
-} from '../types/protocol';
-import { escapeXml, newIqId } from './wsClient';
+} from './wsClient';
+import { escapeXml, newIqId, buildMessageXml } from './wsClient';
 import { saslPlainToken, utf8Decode } from './protobuf';
 
 /**
@@ -42,7 +44,7 @@ export interface WsClientWebOptions extends WsClientOptions {
   wsProtocols?: string[];
 }
 
-export type WsClientWebEvent = WsClientEvent;
+export type WsClientWebEvent = WsClientEvent | { type: 'message-failed'; pending: PendingMessage } | { type: 'disconnect'; reason?: string } | { type: 'connect'; host: string; port: number } | { type: 'auth-success'; mobile?: string } | { type: 'auth-failure'; code: string } | { type: 'log'; level: 'debug' | 'info' | 'warn' | 'error'; message: string } | { type: 'roster'; stanza: Stanza } | { type: 'chat-presence'; presence: ChatPresenceUpdate } | { type: 'chat-message'; message: InboundChatMessage };
 
 export type WsClientWebListener = WsClientListener;
 
@@ -190,7 +192,7 @@ export class WsClientWeb {
     this.cleanupWs();
 
     this.setState('connecting');
-    this.dispatch({ type: 'log', message: `connecting ${this.wsUrl}` });
+    this.dispatch({ type: 'log', level: 'info', message: `connecting ${this.wsUrl}` });
 
     try {
       this.ws = new WebSocket(this.wsUrl);
@@ -208,10 +210,10 @@ export class WsClientWeb {
       this.onWsOpen();
     };
 
-    this.ws.onmessage = (_event) => {
+    this.ws.onmessage = (event: MessageEvent) => {
       if (this.ws !== this.ws) return;
       try {
-        this.onWsMessage(event.data);
+        this.onWsMessage(event.data as string);
       } catch (error) {
         this.handleWsError(error as Error);
       }
@@ -283,9 +285,8 @@ export class WsClientWeb {
 
     if (stanza.tag === 'iq') this.handleIq(stanza);
     else if (stanza.tag === 'message') this.handleMessage(stanza);
-    else if (stanza.tag === 'presence') this.dispatch({ type: 'presence', stanza });
+    else if (stanza.tag === 'presence') this.dispatch({ type: 'stanza', stanza } as WsClientWebEvent);
 
-    this.resolvePending(stanza);
     this.dispatch({ type: 'stanza', stanza });
   }
 
@@ -311,7 +312,7 @@ export class WsClientWeb {
       this.setState('reinit');
       this.sendRaw(this.buildStreamOpen(true));
       this.sendBind();
-      if (mobile) this.dispatch({ type: 'log', message: `mobile validated: ${mobile}` });
+      if (mobile) this.dispatch({ type: 'log', level: 'info', message: `mobile validated: ${mobile}` });
       return;
     }
 
@@ -445,7 +446,7 @@ export class WsClientWeb {
     }
 
     if (this.isPresenceAction(actionName, keys)) {
-      this.dispatch({ type: 'presence', stanza });
+      this.dispatch({ type: 'stanza', stanza } as WsClientWebEvent);
       return;
     }
 
@@ -578,7 +579,7 @@ export class WsClientWeb {
   private dispatch(event: WsClientWebEvent): void {
     for (const listener of this.listeners) {
       try {
-        listener(event);
+        listener(event as unknown as WsClientEvent);
       } catch {
         // ignore
       }
@@ -596,9 +597,6 @@ export class WsClientWeb {
       case 'chat-message':
         break;
       case 'chat-presence':
-        break;
-      case 'presence':
-        cb.onPresence?.(event.stanza);
         break;
       case 'roster':
         cb.onRoster?.(event.stanza);
@@ -729,7 +727,7 @@ export class WsClientWeb {
   }
 
   private tick(): void {
-    if (!this.ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     if (this.connectionState !== 'online' && this.connectionState !== 'reinit') return;
 
     const now = Date.now();
@@ -813,7 +811,7 @@ export class WsClientWeb {
     this.reconnectAttempts += 1;
     const backoff = Math.min(this.maxReconnectDelayMs, RECONNECT_BASE_MS * 2 ** attempt);
     const delay = backoff + Math.floor(Math.random() * 1_000);
-    this.dispatch({ type: 'log', message: `reconnecting in ${delay}ms (attempt ${attempt + 1})` });
+    this.dispatch({ type: 'log', level: 'info', message: `reconnecting in ${delay}ms (attempt ${attempt + 1})` });
 
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = setTimeout(() => {

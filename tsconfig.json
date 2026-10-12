@@ -38,7 +38,7 @@
       "@hooks/*": ["./src/hooks/*"],
       "@types/*": ["./src/types/*"]
     },
-    "types": ["expo-router/types", "react-native"],
+    "types": ["expo-router/types", "react-native", "jest"],
     "incremental": true,
     "tsBuildInfoFile": ".tsbuildinfo"
   },

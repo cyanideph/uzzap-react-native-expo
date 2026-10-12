@@ -126,36 +126,12 @@ export default function ChatScreen(): React.ReactElement {
           type: media.type as 'image' | 'voice' | 'location' | 'file',
           uri: media.content,
           conversationId: id,
-          mimeType: media.meta.mimeType as string,
-          fileName: media.meta.fileName as string,
-          duration: media.meta.duration as number,
-          latitude: media.meta.latitude as number,
-          longitude: media.meta.longitude as number,
-          locationName: media.meta.locationName as string,
-          imageBubble: {
-            maxWidth: '78%',
-            maxHeight: 300,
-            borderRadius: 16,
-            overflow: 'hidden',
-          },
-          imageMessage: {
-            width: '100%',
-            aspectRatio: 1,
-          },
-          imageViewerOverlay: {
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.95)',
-            justifyContent: 'center',
-            alignItems: 'center',
-          },
-          imageViewerContainer: {
-            maxWidth: '95%',
-            maxHeight: '90%',
-          },
-          imageViewerImage: {
-            width: '100%',
-            height: '100%',
-          },
+          mimeType: media.meta.mimeType as string | undefined,
+          fileName: media.meta.fileName as string | undefined,
+          duration: media.meta.duration as number | undefined,
+          latitude: media.meta.latitude as number | undefined,
+          longitude: media.meta.longitude as number | undefined,
+          locationName: media.meta.locationName as string | undefined,
         });
       }
     } catch {
@@ -654,5 +630,29 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     paddingVertical: 14,
+  },
+  imageBubble: {
+    maxWidth: '78%',
+    maxHeight: 300,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  imageMessage: {
+    width: '100%',
+    aspectRatio: 1,
+  },
+  imageViewerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerContainer: {
+    maxWidth: '95%',
+    maxHeight: '90%',
+  },
+  imageViewerImage: {
+    width: '100%',
+    height: '100%',
   },
 });

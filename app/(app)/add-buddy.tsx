@@ -1,15 +1,15 @@
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AppButton, AppInput, Screen, SectionHeader, TitleBar } from '@/components/ui';
+import { AppButton, AppInput, Screen, TitleBar } from '@/components/ui';
 import { useAuth } from '@/auth/AuthProvider';
 import { useTheme } from '@/theme';
 import { contactService, saveContact } from '@/services/contactService';
 
 export default function AddBuddyScreen(): React.ReactElement {
-  const { theme } = useTheme();
-  const { user } = useAuth();
+  const { theme: _theme } = useTheme();
+  const { user: _user } = useAuth();
 
   const [tab, setTab] = useState<'userId' | 'phone' | 'qr'>('userId');
   const [userId, setUserId] = useState('');
@@ -369,6 +369,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginTop: 8,
-  },
   },
 });

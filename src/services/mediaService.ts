@@ -263,7 +263,7 @@ export class MediaService {
     try {
       const results = await Location.reverseGeocodeAsync({ latitude, longitude });
       if (results.length > 0) {
-        const r = results[0];
+        const r = results[0]!;
         return [r.name, r.street, r.city, r.region, r.country].filter(Boolean).join(', ');
       }
     } catch {

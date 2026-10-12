@@ -5,8 +5,9 @@ import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'r
 import { AppButton, EmptyState, Screen, SectionHeader, TitleBar } from '@/components/ui';
 import { useUzzapStore } from '@/store';
 import { useTheme } from '@/theme';
-import type { ChatRoom, ChatRoomType } from '@/types/models';
-import { chatRoomService } from '@/services/chatRoomService';
+import type { ChatRoom } from '@/types/models';
+import type { ChatRoomType } from '@/types/protocol';
+import { chatRoomService, syncChatRooms } from '@/services/chatRoomService';
 
 const ROOM_TYPE_OPTIONS: readonly { value: ChatRoomType; label: string }[] = [
   { value: 'generated', label: 'Public (Generated)' },
@@ -18,7 +19,7 @@ export default function RoomsScreen(): React.ReactElement {
   const { theme } = useTheme();
   const chatRooms = useUzzapStore((state) => state.chatRooms);
   const syncing = useUzzapStore((state) => state.syncingChatRooms);
-  const syncRooms = useUzzapStore((state) => state.syncChatRooms);
+  const syncRooms = syncChatRooms;
 
   const [showCreate, setShowCreate] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
@@ -224,7 +225,6 @@ function promptPassword(roomName: string): Promise<string | undefined> {
         { text: 'Cancel', onPress: () => resolve(undefined), style: 'cancel' },
         { text: 'Join', onPress: (password) => resolve(password) },
       ],
-      'secure',
     );
   });
 }

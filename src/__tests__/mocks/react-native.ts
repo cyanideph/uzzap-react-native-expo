@@ -1,4 +1,4 @@
-const React = require('react');
+import React from 'react';
 
 const View = ({ children, style, ...props }: any) => React.createElement('View', props, children);
 const Text = ({ children, style, ...props }: any) => React.createElement('Text', props, children);

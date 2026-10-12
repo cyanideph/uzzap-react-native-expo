@@ -551,7 +551,7 @@ export function AlertDialog({
   content,
   actions,
 }: AlertDialogProps): React.ReactElement | null {
-  const { theme } = useTheme();
+  useTheme();
   if (!visible) return null;
   return (
     <View style={styles.alertOverlay} onStartShouldSetResponder={() => true}>
@@ -592,6 +592,9 @@ export interface AppInputProps {
   autoFocus?: boolean;
   error?: string | null;
   style?: StyleProp<ViewStyle>;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoCorrect?: boolean;
+  onSubmitEditing?: () => void;
 }
 
 export function AppInput({
@@ -604,6 +607,9 @@ export function AppInput({
   autoFocus,
   error,
   style,
+  autoCapitalize,
+  autoCorrect,
+  onSubmitEditing,
 }: AppInputProps): React.ReactElement {
   const { theme } = useTheme();
   const [focused, setFocused] = React.useState(false);
@@ -635,6 +641,9 @@ export function AppInput({
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType}
         autoFocus={autoFocus}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
+        onSubmitEditing={onSubmitEditing}
         style={[
           {
             height: theme.layout.inputHeight,
@@ -647,7 +656,7 @@ export function AppInput({
             fontSize: theme.typography.size.body,
           },
         ]}
-        onFocus={(event) => {
+        onFocus={() => {
           setFocused(true);
         }}
         onBlur={() => {

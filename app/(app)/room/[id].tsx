@@ -55,12 +55,12 @@ export default function RoomChatScreen(): React.ReactElement {
   const [showUsers, setShowUsers] = useState(false);
   const [adminTargetUser, setAdminTargetUser] = useState<ChatRoomUser | null>(null);
   const [showAdminSheet, setShowAdminSheet] = useState(false);
-  const [roomTopic, setRoomTopic] = useState('');
+  const [roomTopic, setRoomTopic] = useState<string>('');
 
   const messages = storedMessages ?? EMPTY_MESSAGES;
   const data = useMemo(() => [...messages].reverse(), [messages]);
   const users = useMemo<ChatRoomUser[]>(
-    () => Object.values(chatRoomUsers).filter((u) => u.roomId === id ?? ''),
+    () => Object.values(chatRoomUsers).filter((u) => u.roomId === (id ?? '')),
     [chatRoomUsers, id],
   );
   const selfId = user?.id ?? 'me';
@@ -215,7 +215,7 @@ export default function RoomChatScreen(): React.ReactElement {
               <Text style={styles.adminSheetItemIcon}>
                 {adminTargetUser.role === 'moderator' ? '⬇️' : '⬆️'}
               </Text>
-              <Text style={styles.actionSheetItemText}>
+              <Text style={styles.adminSheetItemText}>
                 {adminTargetUser.role === 'moderator'
                   ? 'Demote to Participant'
                   : 'Promote to Moderator'}
@@ -233,7 +233,7 @@ export default function RoomChatScreen(): React.ReactElement {
                     {
                       text: 'Set Topic',
                       onPress: (text) => {
-                        setRoomTopic(text);
+                        if (text) setRoomTopic(text);
                         handleTopicChange();
                       },
                     },

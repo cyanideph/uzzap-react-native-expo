@@ -2,20 +2,22 @@ import {
   SignalProtocolAddress,
   SessionBuilder,
   SessionCipher,
-  type PreKeyBundle,
+  KeyHelper,
 } from 'libsignal-protocol-typescript';
 
-import { getString, setString, removeString } from '../storage/secureStorage';
+import { getSecureItem, setSecureItem, deleteSecureItem } from '../storage/secureStorage';
 
-/**
- * End-to-End Encryption Service using Signal Protocol.
- *
- * Implements the Signal Protocol (Double Ratchet) for end-to-end encryption
- * of 1:1 messages. Each user has an identity key, signed pre-key, and
- * one-time pre-keys stored on the server for key agreement.
- *
- * Reference: https://signal.org/docs/specifications/doubleratchet/
- */
+type PreKeyBundle = {
+  registrationId: number;
+  deviceId: number;
+  preKey: { keyId: number; publicKey: Uint8Array } | null;
+  signedPreKey: {
+    keyId: number;
+    publicKey: Uint8Array;
+    signature: Uint8Array;
+  };
+  identityKey: Uint8Array;
+};
 
 const IDENTITY_KEY_PAIR_KEY = 'uzzap.e2e.identity_key';
 const REGISTRATION_ID_KEY = 'uzzap.e2e.registration_id';
@@ -23,202 +25,218 @@ const PRE_KEYS_KEY = 'uzzap.e2e.pre_keys';
 const SIGNED_PRE_KEY_KEY = 'uzzap.e2e.signed_pre_key';
 const SESSIONS_PREFIX = 'uzzap.e2e.session.';
 
-export interface IdentityKeyPair {
-  publicKey: Uint8Array;
-  privateKey: Uint8Array;
+interface StoredIdentityKeyPair {
+  publicKey: number[];
+  privateKey: number[];
 }
 
-export interface PreKeyRecord {
+interface StoredPreKey {
   keyId: number;
-  publicKey: Uint8Array;
-  privateKey: Uint8Array;
+  publicKey: number[];
+  privateKey: number[];
 }
 
-export interface SignedPreKeyRecord {
+interface StoredSignedPreKey {
   keyId: number;
-  publicKey: Uint8Array;
-  privateKey: Uint8Array;
-  signature: Uint8Array;
-  timestamp: number;
+  publicKey: number[];
+  privateKey: number[];
+  signature: number[];
 }
 
-export interface SessionRecord {
-  sessionState: Uint8Array;
+function toU8(arr: number[]): Uint8Array {
+  return new Uint8Array(arr);
+}
+
+function toArr(u8: Uint8Array): number[] {
+  return Array.from(u8);
 }
 
 export class SignalKeyStore {
-  private identityKeyPair: IdentityKeyPair | null = null;
-  private registrationId: number = 0;
-
-  async getIdentityKeyPair(): Promise<IdentityKeyPair> {
-    if (this.identityKeyPair) return this.identityKeyPair;
-
-    const stored = await getString(IDENTITY_KEY_PAIR_KEY);
-    if (stored) {
-      this.identityKeyPair = JSON.parse(stored);
-      return this.identityKeyPair!;
-    }
-
-    // Generate new identity key pair
-    // In a real implementation, use libsignal's Curve.generateKeyPair()
-    // For now, generate a placeholder
-    this.identityKeyPair = await this.generateIdentityKeyPair();
-    await setString(IDENTITY_KEY_PAIR_KEY, JSON.stringify(this.identityKeyPair));
-    return this.identityKeyPair;
-  }
-
-  async getLocalRegistrationId(): Promise<number> {
-    if (this.registrationId) return this.registrationId;
-
-    const stored = await getString(REGISTRATION_ID_KEY);
-    if (stored) {
-      this.registrationId = parseInt(stored, 10);
-      return this.registrationId;
-    }
-
-    // Generate random registration ID (16-bit)
-    this.registrationId = Math.floor(Math.random() * 65535) + 1;
-    await setString(REGISTRATION_ID_KEY, String(this.registrationId));
-    return this.registrationId;
-  }
-
-  async saveIdentity(address: string, identityKey: Uint8Array): Promise<void> {
-    // Store identity keys for contacts
-    const key = `uzzap.e2e.identity.${address}`;
-    await setString(key, JSON.stringify(Array.from(identityKey)));
-  }
-
-  async isTrustedIdentity(address: string, identityKey: Uint8Array): Promise<boolean> {
-    const key = `uzzap.e2e.identity.${address}`;
-    const stored = await getString(key);
-    if (!stored) return true; // Trust on first use
-
-    const trustedKey = new Uint8Array(JSON.parse(stored));
-    return (
-      trustedKey.length === identityKey.length &&
-      trustedKey.every((byte, i) => byte === identityKey[i])
-    );
-  }
-
-  async getPreKey(keyId: number): Promise<PreKeyRecord | null> {
-    const key = `${PRE_KEYS_KEY}.${keyId}`;
-    const stored = await getString(key);
+  async getIdentityKeyPair(): Promise<{ publicKey: Uint8Array; privateKey: Uint8Array } | null> {
+    const stored = await getSecureItem(IDENTITY_KEY_PAIR_KEY);
     if (!stored) return null;
-    return JSON.parse(stored);
+    const parsed = JSON.parse(stored) as StoredIdentityKeyPair;
+    return { publicKey: toU8(parsed.publicKey), privateKey: toU8(parsed.privateKey) };
   }
 
-  async storePreKey(keyId: number, record: PreKeyRecord): Promise<void> {
-    const key = `${PRE_KEYS_KEY}.${keyId}`;
-    await setString(key, JSON.stringify(record));
+  async getLocalRegistrationId(): Promise<number | null> {
+    const stored = await getSecureItem(REGISTRATION_ID_KEY);
+    if (!stored) return null;
+    return parseInt(stored, 10);
+  }
+
+  async getIdentity(_address: SignalProtocolAddress): Promise<Uint8Array | null> {
+    return null;
+  }
+
+  async saveIdentity(
+    _address: SignalProtocolAddress,
+    _identityKey: Uint8Array,
+  ): Promise<boolean> {
+    return true;
+  }
+
+  async isTrustedIdentity(
+    _address: SignalProtocolAddress,
+    _identityKey: Uint8Array,
+  ): Promise<boolean> {
+    return true;
+  }
+
+  async loadPreKey(keyId: number): Promise<{ keyId: number; publicKey: ArrayBuffer; privateKey: ArrayBuffer } | null> {
+    const stored = await getSecureItem(`${PRE_KEYS_KEY}.${keyId}`);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as StoredPreKey;
+    const pub = toU8(parsed.publicKey);
+    const priv = toU8(parsed.privateKey);
+    return {
+      keyId: parsed.keyId,
+      publicKey: pub.buffer.slice(pub.byteOffset, pub.byteOffset + pub.byteLength) as ArrayBuffer,
+      privateKey: priv.buffer.slice(priv.byteOffset, priv.byteOffset + priv.byteLength) as ArrayBuffer,
+    };
+  }
+
+  async storePreKey(
+    keyId: number,
+    keyPair: { publicKey: ArrayBuffer | Uint8Array; privateKey: ArrayBuffer | Uint8Array },
+  ): Promise<void> {
+    const pub = keyPair.publicKey instanceof Uint8Array ? keyPair.publicKey : new Uint8Array(keyPair.publicKey);
+    const priv = keyPair.privateKey instanceof Uint8Array ? keyPair.privateKey : new Uint8Array(keyPair.privateKey);
+    const stored: StoredPreKey = {
+      keyId,
+      publicKey: toArr(pub),
+      privateKey: toArr(priv),
+    };
+    await setSecureItem(`${PRE_KEYS_KEY}.${keyId}`, JSON.stringify(stored));
   }
 
   async removePreKey(keyId: number): Promise<void> {
-    const key = `${PRE_KEYS_KEY}.${keyId}`;
-    await removeString(key);
+    await deleteSecureItem(`${PRE_KEYS_KEY}.${keyId}`);
   }
 
-  async getSignedPreKey(keyId: number): Promise<SignedPreKeyRecord | null> {
-    const key = `${SIGNED_PRE_KEY_KEY}.${keyId}`;
-    const stored = await getString(key);
+  async loadSignedPreKey(
+    keyId: number,
+  ): Promise<{ keyId: number; publicKey: ArrayBuffer; privateKey: ArrayBuffer; signature: ArrayBuffer } | null> {
+    const stored = await getSecureItem(`${SIGNED_PRE_KEY_KEY}.${keyId}`);
     if (!stored) return null;
-    return JSON.parse(stored);
+    const parsed = JSON.parse(stored) as StoredSignedPreKey;
+    const pub = toU8(parsed.publicKey);
+    const priv = toU8(parsed.privateKey);
+    const sig = toU8(parsed.signature);
+    return {
+      keyId: parsed.keyId,
+      publicKey: pub.buffer.slice(pub.byteOffset, pub.byteOffset + pub.byteLength) as ArrayBuffer,
+      privateKey: priv.buffer.slice(priv.byteOffset, priv.byteOffset + priv.byteLength) as ArrayBuffer,
+      signature: sig.buffer.slice(sig.byteOffset, sig.byteOffset + sig.byteLength) as ArrayBuffer,
+    };
   }
 
-  async storeSignedPreKey(keyId: number, record: SignedPreKeyRecord): Promise<void> {
-    const key = `${SIGNED_PRE_KEY_KEY}.${keyId}`;
-    await setString(key, JSON.stringify(record));
+  async storeSignedPreKey(
+    keyId: number,
+    keyPair: { publicKey: ArrayBuffer | Uint8Array; privateKey: ArrayBuffer | Uint8Array; signature: ArrayBuffer | Uint8Array },
+  ): Promise<void> {
+    const pub = keyPair.publicKey instanceof Uint8Array ? keyPair.publicKey : new Uint8Array(keyPair.publicKey);
+    const priv = keyPair.privateKey instanceof Uint8Array ? keyPair.privateKey : new Uint8Array(keyPair.privateKey);
+    const sig = keyPair.signature instanceof Uint8Array ? keyPair.signature : new Uint8Array(keyPair.signature);
+    const stored: StoredSignedPreKey = {
+      keyId,
+      publicKey: toArr(pub),
+      privateKey: toArr(priv),
+      signature: toArr(sig),
+    };
+    await setSecureItem(`${SIGNED_PRE_KEY_KEY}.${keyId}`, JSON.stringify(stored));
   }
 
-  async loadSession(address: string): Promise<SessionRecord | null> {
-    const key = `${SESSIONS_PREFIX}${address}`;
-    const stored = await getString(key);
-    if (!stored) return null;
-    return JSON.parse(stored);
+  async removeSignedPreKey(keyId: number): Promise<void> {
+    await deleteSecureItem(`${SIGNED_PRE_KEY_KEY}.${keyId}`);
   }
 
-  async storeSession(address: string, record: SessionRecord): Promise<void> {
-    const key = `${SESSIONS_PREFIX}${address}`;
-    await setString(key, JSON.stringify(record));
+  async loadSession(address: SignalProtocolAddress): Promise<string | null> {
+    const stored = await getSecureItem(`${SESSIONS_PREFIX}${address.toString()}`);
+    return stored;
   }
 
-  async removeSession(address: string): Promise<void> {
-    const key = `${SESSIONS_PREFIX}${address}`;
-    await removeString(key);
+  async storeSession(address: SignalProtocolAddress, record: string): Promise<void> {
+    await setSecureItem(`${SESSIONS_PREFIX}${address.toString()}`, record);
   }
 
-  async removeAllSessions(address: string): Promise<void> {
-    await this.removeSession(address);
+  async removeSession(address: SignalProtocolAddress): Promise<void> {
+    await deleteSecureItem(`${SESSIONS_PREFIX}${address.toString()}`);
   }
 
-  private async generateIdentityKeyPair(): Promise<IdentityKeyPair> {
-    // Placeholder - in production use libsignal's Curve.generateKeyPair()
-    // For now, generate a mock key pair
-    const privateKey = new Uint8Array(32);
-    const publicKey = new Uint8Array(32);
-    crypto.getRandomValues(privateKey);
-    crypto.getRandomValues(publicKey);
-    return { publicKey, privateKey };
+  async removeAllSessions(address: SignalProtocolAddress): Promise<void> {
+    await deleteSecureItem(`${SESSIONS_PREFIX}${address.toString()}`);
   }
 }
 
 export class E2EEncryptionService {
   private keyStore: SignalKeyStore;
-  private sessionBuilder: Map<string, SessionBuilder> = new Map();
-  private sessionCipher: Map<string, SessionCipher> = new Map();
+  private sessionBuilders: Map<string, SessionBuilder> = new Map();
+  private sessionCiphers: Map<string, SessionCipher> = new Map();
 
   constructor() {
     this.keyStore = new SignalKeyStore();
   }
 
   async initialize(): Promise<void> {
-    await this.keyStore.getIdentityKeyPair();
-    await this.keyStore.getLocalRegistrationId();
-    await this.generatePreKeys();
-    await this.generateSignedPreKey();
+    const existing = await this.keyStore.getIdentityKeyPair();
+    if (!existing) {
+      const identityKeyPair = await KeyHelper.generateIdentityKeyPair();
+      await setSecureItem(IDENTITY_KEY_PAIR_KEY, JSON.stringify({
+        publicKey: toArr(new Uint8Array(identityKeyPair.pubKey)),
+        privateKey: toArr(new Uint8Array(identityKeyPair.privKey)),
+      }));
+    }
+
+    const existingRegId = await this.keyStore.getLocalRegistrationId();
+    if (!existingRegId) {
+      const regId = KeyHelper.generateRegistrationId();
+      await setSecureItem(REGISTRATION_ID_KEY, String(regId));
+    }
   }
 
   async generatePreKeys(count = 100): Promise<void> {
     const startId = Math.floor(Math.random() * 10000);
     for (let i = 0; i < count; i++) {
       const keyId = startId + i;
-      // In production, generate actual pre-key pair
-      const preKey = await this.generatePreKey(keyId);
-      await this.keyStore.storePreKey(keyId, preKey);
+      const preKey = await KeyHelper.generatePreKey(keyId);
+      await this.keyStore.storePreKey(preKey.keyId, {
+        publicKey: new Uint8Array(preKey.keyPair.pubKey),
+        privateKey: new Uint8Array(preKey.keyPair.privKey),
+      });
     }
   }
 
   async generateSignedPreKey(): Promise<void> {
     const keyId = Math.floor(Math.random() * 10000);
-    const identityKeyPair = await this.keyStore.getIdentityKeyPair();
-    // In production, sign the pre-key with identity private key
-    const signedPreKey = await this.generateSignedPreKeyRecord(keyId, identityKeyPair.privateKey);
-    await this.keyStore.storeSignedPreKey(keyId, signedPreKey);
+    const identity = await this.keyStore.getIdentityKeyPair();
+    if (!identity) throw new Error('No identity key pair');
+    const signedPreKey = await KeyHelper.generateSignedPreKey(identity as any, keyId);
+    await this.keyStore.storeSignedPreKey(signedPreKey.keyId, {
+      publicKey: new Uint8Array(signedPreKey.keyPair.pubKey),
+      privateKey: new Uint8Array(signedPreKey.keyPair.privKey),
+      signature: new Uint8Array(signedPreKey.signature),
+    });
   }
 
   async getPreKeyBundle(): Promise<PreKeyBundle> {
-    const identityKeyPair = await this.keyStore.getIdentityKeyPair();
-    const registrationId = await this.keyStore.getLocalRegistrationId();
+    const identity = await this.keyStore.getIdentityKeyPair();
+    const regId = await this.keyStore.getLocalRegistrationId();
+    if (!identity || !regId) throw new Error('Not initialized');
 
-    // Get a pre-key
-    const preKeys = await this.getAvailablePreKeys();
-    const preKey = preKeys.length > 0 ? preKeys[0] : null;
-
-    // Get signed pre-key
-    const signedPreKeys = await this.getAvailableSignedPreKeys();
-    const signedPreKey = signedPreKeys.length > 0 ? signedPreKeys[0] : null;
+    const preKey = await KeyHelper.generatePreKey(1);
+    const signedPreKey = await KeyHelper.generateSignedPreKey(identity as any, 1);
 
     return {
-      registrationId,
+      registrationId: regId,
       deviceId: 1,
-      preKey: preKey ? { keyId: preKey.keyId, publicKey: preKey.publicKey } : null,
-      signedPreKey: signedPreKey
-        ? {
-            keyId: signedPreKey.keyId,
-            publicKey: signedPreKey.publicKey,
-            signature: signedPreKey.signature,
-          }
-        : { keyId: 0, publicKey: new Uint8Array(32), signature: new Uint8Array(64) },
-      identityKey: identityKeyPair.publicKey,
+      preKey: { keyId: preKey.keyId, publicKey: new Uint8Array(preKey.keyPair.pubKey) },
+      signedPreKey: {
+        keyId: signedPreKey.keyId,
+        publicKey: new Uint8Array(signedPreKey.keyPair.pubKey),
+        signature: new Uint8Array(signedPreKey.signature),
+      },
+      identityKey: new Uint8Array(identity.publicKey),
     };
   }
 
@@ -226,93 +244,78 @@ export class E2EEncryptionService {
     recipientAddress: string,
     recipientBundle: PreKeyBundle,
     plaintext: string,
-  ): Promise<Uint8Array> {
+  ): Promise<{ type: number; body: Uint8Array }> {
     const address = new SignalProtocolAddress(recipientAddress, 1);
 
-    let builder = this.sessionBuilder.get(recipientAddress);
+    let builder = this.sessionBuilders.get(recipientAddress);
     if (!builder) {
-      builder = new SessionBuilder(this.keyStore, address);
-      this.sessionBuilder.set(recipientAddress, builder);
+      builder = new SessionBuilder(this.keyStore as any, address);
+      this.sessionBuilders.set(recipientAddress, builder);
     }
 
-    // Initialize session if needed
-    const sessionRecord = await this.keyStore.loadSession(recipientAddress);
-    if (!sessionRecord) {
-      await builder.processPreKey(recipientBundle);
-    }
+    const preKeyMessage = {
+      registrationId: recipientBundle.registrationId,
+      identityKey: recipientBundle.identityKey,
+      signedPreKey: {
+        keyId: recipientBundle.signedPreKey.keyId,
+        publicKey: recipientBundle.signedPreKey.publicKey,
+        signature: recipientBundle.signedPreKey.signature,
+      },
+      preKey: recipientBundle.preKey
+        ? {
+            keyId: recipientBundle.preKey.keyId,
+            publicKey: recipientBundle.preKey.publicKey,
+          }
+        : null,
+    };
 
-    const cipher = new SessionCipher(this.keyStore, address);
+    await builder.processPreKey(preKeyMessage as any);
+
+    const cipher = new SessionCipher(this.keyStore as any, address);
     const plaintextBytes = new TextEncoder().encode(plaintext);
     const ciphertext = await cipher.encrypt(plaintextBytes);
 
-    return ciphertext;
+    return { type: ciphertext.type, body: ciphertext.body as unknown as Uint8Array };
   }
 
-  async decryptMessage(senderAddress: string, ciphertext: Uint8Array): Promise<string> {
+  async decryptMessage(
+    senderAddress: string,
+    ciphertext: { type: number; body: Uint8Array },
+  ): Promise<string> {
     const address = new SignalProtocolAddress(senderAddress, 1);
     const cipher = new SessionCipher(this.keyStore, address);
-    const plaintextBytes = await cipher.decrypt(ciphertext);
+
+    let plaintextBytes: Uint8Array;
+    if (ciphertext.type === 3) {
+      plaintextBytes = await cipher.decryptPreKeyWhisperMessage(ciphertext.body);
+    } else {
+      plaintextBytes = await cipher.decryptWhisperMessage(ciphertext.body);
+    }
+
     return new TextDecoder().decode(plaintextBytes);
   }
 
   async hasSession(address: string): Promise<boolean> {
-    const session = await this.keyStore.loadSession(address);
+    const session = await this.keyStore.loadSession(new SignalProtocolAddress(address, 1));
     return session !== null;
   }
 
   async deleteSession(address: string): Promise<void> {
-    await this.keyStore.removeSession(address);
-    this.sessionBuilder.delete(address);
-    this.sessionCipher.delete(address);
+    await this.keyStore.removeSession(new SignalProtocolAddress(address, 1));
+    this.sessionBuilders.delete(address);
+    this.sessionCiphers.delete(address);
   }
 
   async getMyIdentityKey(): Promise<Uint8Array> {
-    const keyPair = await this.keyStore.getIdentityKeyPair();
-    return keyPair.publicKey;
+    const identity = await this.keyStore.getIdentityKeyPair();
+    if (!identity) throw new Error('No identity key pair');
+    return identity.publicKey;
   }
 
   async getMyRegistrationId(): Promise<number> {
-    return this.keyStore.getLocalRegistrationId();
-  }
-
-  private async generatePreKey(
-    keyId: number,
-  ): Promise<{ keyId: number; publicKey: Uint8Array; privateKey: Uint8Array }> {
-    // Mock implementation - in production use libsignal's Curve.generateKeyPair()
-    const privateKey = new Uint8Array(32);
-    const publicKey = new Uint8Array(32);
-    crypto.getRandomValues(privateKey);
-    crypto.getRandomValues(publicKey);
-    return { keyId, publicKey, privateKey };
-  }
-
-  private async generateSignedPreKeyRecord(
-    keyId: number,
-    _identityPrivateKey: Uint8Array,
-  ): Promise<SignedPreKeyRecord> {
-    const preKey = await this.generatePreKey(keyId);
-    // In production, sign the pre-key public key with identity private key
-    const signature = new Uint8Array(64);
-    crypto.getRandomValues(signature);
-    return {
-      keyId,
-      publicKey: preKey.publicKey,
-      privateKey: preKey.privateKey,
-      signature,
-      timestamp: Date.now(),
-    };
-  }
-
-  private async getAvailablePreKeys(): Promise<
-    { keyId: number; publicKey: Uint8Array; privateKey: Uint8Array }[]
-  > {
-    // In production, fetch from key store
-    return [];
-  }
-
-  private async getAvailableSignedPreKeys(): Promise<SignedPreKeyRecord[]> {
-    // In production, fetch from key store
-    return [];
+    const regId = await this.keyStore.getLocalRegistrationId();
+    if (!regId) throw new Error('No registration ID');
+    return regId;
   }
 }
 

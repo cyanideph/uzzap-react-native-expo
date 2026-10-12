@@ -27,10 +27,35 @@ export default function RoomsScreen(): React.ReactElement {
   const [newRoomPassword, setNewRoomPassword] = useState('');
   const [newRoomMaxUsers, setNewRoomMaxUsers] = useState('20');
   const [newRoomNick, setNewRoomNick] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const invites = useUzzapStore((state) => state.chatInvites);
+  const removeInvite = useUzzapStore((state) => state.removeChatInvite);
 
-  const rooms = useMemo<ChatRoom[]>(() => Object.values(chatRooms), [chatRooms]);
+  const rooms = useMemo<ChatRoom[]>(() => {
+    const all = Object.values(chatRooms);
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return all;
+    return all.filter(
+      (r) => r.name.toLowerCase().includes(query) || r.id.toLowerCase().includes(query),
+    );
+  }, [chatRooms, searchQuery]);
   const joinedRooms = rooms.filter((r) => r.isJoined);
   const availableRooms = rooms.filter((r) => !r.isJoined);
+
+  const handleAcceptInvite = async (roomId: string, from: string): Promise<void> => {
+    const nick = useUzzapStore.getState().user?.id || 'me';
+    try {
+      await chatRoomService.joinRoom(roomId, nick);
+      removeInvite(roomId, from);
+      router.push({ pathname: '/room/[id]', params: { id: roomId } });
+    } catch {
+      Alert.alert('Error', 'Failed to join room');
+    }
+  };
+
+  const handleDeclineInvite = (roomId: string, from: string): void => {
+    removeInvite(roomId, from);
+  };
 
   const handleCreateRoom = async (): Promise<void> => {
     if (!newRoomName.trim()) return;
@@ -141,6 +166,45 @@ export default function RoomsScreen(): React.ReactElement {
         </View>
       ) : (
         <>
+          <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search rooms..."
+              placeholderTextColor="#666"
+              style={styles.searchInput}
+            />
+          </View>
+          {invites.length > 0 && (
+            <>
+              <SectionHeader title={`INVITES (${invites.length})`} />
+              {invites.map((invite) => (
+                <View key={`${invite.roomId}:${invite.from}`} style={styles.roomRow}>
+                  <View style={styles.roomInfo}>
+                    <Text style={styles.roomName}>✉ {invite.roomId}</Text>
+                    <Text style={styles.roomMeta}>
+                      Invited by {invite.from}
+                      {invite.body ? ` • ${invite.body}` : ''}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <Pressable
+                      onPress={() => void handleAcceptInvite(invite.roomId, invite.from)}
+                      style={styles.acceptButton}
+                    >
+                      <Text style={styles.acceptText}>Join</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleDeclineInvite(invite.roomId, invite.from)}
+                      style={styles.declineButton}
+                    >
+                      <Text style={styles.declineText}>Decline</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </>
+          )}
           {joinedRooms.length > 0 && (
             <>
               <SectionHeader title={`JOINED (${joinedRooms.length})`} />
@@ -287,5 +351,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
+  },
+  searchInput: {
+    height: 40,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#333',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    fontSize: 15,
+    color: '#fff',
+    backgroundColor: '#1a1a1a',
+  },
+  acceptButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#FF7A1A',
+    borderRadius: 8,
+  },
+  acceptText: {
+    color: '#14161A',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  declineButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#333',
+  },
+  declineText: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

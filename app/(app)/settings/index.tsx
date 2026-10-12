@@ -204,8 +204,18 @@ export default function SettingsScreen(): React.ReactElement {
         />
 
         <SectionHeader title="ACCOUNT" />
+        <SettingRow
+          label="My status"
+          description="Set presence and status message"
+          onPress={() => router.push('/status')}
+        />
         <SettingRow label="Change password" onPress={() => setShowChangePassword(true)} />
         <SettingRow label="Change mobile number" onPress={() => setShowChangeMobile(true)} />
+        <SettingRow
+          label="Offline delivery"
+          description="How messages reach you when logged out"
+          onPress={() => router.push('/settings/offline')}
+        />
         <SettingRow
           label="Biometric unlock"
           right={switchRow(settings.biometricUnlock, handleToggleBiometric)}

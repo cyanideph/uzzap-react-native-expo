@@ -595,6 +595,7 @@ export interface AppInputProps {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   autoCorrect?: boolean;
   onSubmitEditing?: () => void;
+  maxLength?: number;
 }
 
 export function AppInput({
@@ -610,6 +611,7 @@ export function AppInput({
   autoCapitalize,
   autoCorrect,
   onSubmitEditing,
+  maxLength,
 }: AppInputProps): React.ReactElement {
   const { theme } = useTheme();
   const [focused, setFocused] = React.useState(false);
@@ -644,6 +646,7 @@ export function AppInput({
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
         onSubmitEditing={onSubmitEditing}
+        maxLength={maxLength}
         style={[
           {
             height: theme.layout.inputHeight,

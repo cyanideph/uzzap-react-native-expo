@@ -38,10 +38,30 @@ const TICK: Record<Message['status'], string> = {
   failed: '!',
 };
 
+function toDate(timestamp: number): Date {
+  return new Date(timestamp > 10000000000 ? timestamp : timestamp * 1000);
+}
+
 function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
+  const date = toDate(timestamp);
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
+
+function formatDay(timestamp: number): string {
+  const date = toDate(timestamp);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date): boolean =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  if (sameDay(date, today)) return 'Today';
+  if (sameDay(date, yesterday)) return 'Yesterday';
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+type ChatRow = { kind: 'msg'; message: Message } | { kind: 'day'; label: string; key: string };
 
 export default function ChatScreen(): React.ReactElement {
   const params = useLocalSearchParams<{ id: string }>();
@@ -67,6 +87,22 @@ export default function ChatScreen(): React.ReactElement {
 
   const messages = storedMessages ?? EMPTY_MESSAGES;
   const data = useMemo(() => [...messages].reverse(), [messages]);
+  const rows = useMemo<ChatRow[]>(() => {
+    const out: ChatRow[] = [];
+    let lastDay = '';
+    for (const message of data) {
+      const day = formatDay(message.timestamp);
+      if (day !== lastDay) {
+        lastDay = day;
+        out.push({ kind: 'day', label: day, key: `day-${message.timestamp}-${message.id}` });
+      }
+      out.push({ kind: 'msg', message });
+    }
+    return out;
+  }, [data]);
+  const isTyping = useUzzapStore((state) => (id ? state.typing[id] === true : false));
+  const [showScrollDown, setShowScrollDown] = useState(false);
+  const listRef = React.useRef<FlatList<ChatRow> | null>(null);
 
   // Enter/leave the conversation (read receipts + active id) exactly once per id.
   useEffect(() => {
@@ -306,9 +342,12 @@ export default function ChatScreen(): React.ReactElement {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
         <FlatList
-          data={data}
+          ref={listRef}
+          data={rows}
           inverted
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => (item.kind === 'day' ? item.key : item.message.id)}
+          onScroll={(e) => setShowScrollDown(e.nativeEvent.contentOffset.y > 300)}
+          scrollEventThrottle={200}
           contentContainerStyle={[styles.listContent, messages.length === 0 && styles.listEmpty]}
           ListEmptyComponent={
             <Text
@@ -323,25 +362,33 @@ export default function ChatScreen(): React.ReactElement {
             </Text>
           }
           renderItem={({ item }) => {
-            const mine = item.senderId === selfId;
-            const isImage = item.type === 'image' && item.meta?.uri;
-            const isVoice = item.type === 'voice';
-            const isLocation = item.type === 'location';
-            const isFile = item.type === 'file';
-            const reply = item.meta?.replyTo as
+            if (item.kind === 'day') {
+              return (
+                <View style={styles.dayHeader}>
+                  <Text style={styles.dayHeaderText}>{item.label}</Text>
+                </View>
+              );
+            }
+            const message = item.message;
+            const mine = message.senderId === selfId;
+            const isImage = message.type === 'image' && message.meta?.uri;
+            const isVoice = message.type === 'voice';
+            const isLocation = message.type === 'location';
+            const isFile = message.type === 'file';
+            const reply = message.meta?.replyTo as
               | { id: string; senderId: string; content: string }
               | undefined;
-            const forwardedFrom = item.meta?.forwardedFrom as string | undefined;
-            const duration = item.meta?.duration as number | undefined;
+            const forwardedFrom = message.meta?.forwardedFrom as string | undefined;
+            const duration = message.meta?.duration as number | undefined;
             return (
               <Pressable
-                onLongPress={() => handleLongPress(item)}
+                onLongPress={() => handleLongPress(message)}
                 onPress={
                   isImage
                     ? () =>
                         setImageViewer({
-                          uri: item.meta?.uri as string,
-                          mimeType: item.meta?.mimeType as string,
+                          uri: message.meta?.uri as string,
+                          mimeType: message.meta?.mimeType as string,
                         })
                     : undefined
                 }
@@ -370,37 +417,37 @@ export default function ChatScreen(): React.ReactElement {
                   {isImage ? (
                     <View style={styles.imageBubble}>
                       <Image
-                        source={{ uri: item.meta?.uri as string }}
+                        source={{ uri: message.meta?.uri as string }}
                         style={styles.imageMessage}
                         resizeMode="cover"
                       />
                     </View>
                   ) : isVoice ? (
                     <Pressable
-                      onPress={() => void handleVoiceToggle(item)}
+                      onPress={() => void handleVoiceToggle(message)}
                       style={styles.voiceRow}
                     >
                       <Text style={styles.voiceIcon}>
-                        {playingVoiceId === item.id ? '⏸' : '▶'}
+                        {playingVoiceId === message.id ? '⏸' : '▶'}
                       </Text>
                       <Text style={styles.voiceText}>
                         Voice message{duration ? ` • ${duration}s` : ''}
                       </Text>
                     </Pressable>
                   ) : isLocation ? (
-                    <Pressable onPress={() => handleOpenLocation(item)} style={styles.locationCard}>
+                    <Pressable onPress={() => handleOpenLocation(message)} style={styles.locationCard}>
                       <Text style={styles.locationIcon}>📍</Text>
                       <Text style={styles.locationText} numberOfLines={2}>
-                        {(item.meta?.locationName as string | undefined) ?? item.content}
+                        {(message.meta?.locationName as string | undefined) ?? message.content}
                       </Text>
                       <Text style={styles.locationSub}>Tap to open in Maps</Text>
                     </Pressable>
                   ) : isFile ? (
-                    <Pressable onPress={() => handleOpenFile(item)} style={styles.fileCard}>
+                    <Pressable onPress={() => handleOpenFile(message)} style={styles.fileCard}>
                       <Text style={styles.fileIcon}>📎</Text>
                       <View style={styles.fileInfo}>
                         <Text style={styles.fileName} numberOfLines={1}>
-                          {(item.meta?.fileName as string | undefined) ?? 'Attachment'}
+                          {(message.meta?.fileName as string | undefined) ?? 'Attachment'}
                         </Text>
                         <Text style={styles.fileSub}>Tap to open</Text>
                       </View>
@@ -414,7 +461,7 @@ export default function ChatScreen(): React.ReactElement {
                         fontSize: theme.typography.size.body,
                       }}
                     >
-                      {item.content}
+                      {message.content}
                     </Text>
                   )}
                   <Text
@@ -425,14 +472,31 @@ export default function ChatScreen(): React.ReactElement {
                       alignSelf: mine ? 'flex-end' : 'flex-start',
                     }}
                   >
-                    {formatTime(item.timestamp)}
-                    {mine ? `  ${TICK[item.status]}` : ''}
+                    {formatTime(message.timestamp)}
+                    {mine ? `  ${TICK[message.status]}` : ''}
                   </Text>
                 </View>
               </Pressable>
             );
           }}
         />
+        {isTyping ? (
+          <View style={styles.typingRow}>
+            <View style={styles.typingBubble}>
+              <Text style={styles.typingDots}>•••</Text>
+            </View>
+          </View>
+        ) : null}
+        {showScrollDown ? (
+          <Pressable
+            onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+            accessibilityRole="button"
+            accessibilityLabel="Scroll to latest messages"
+            style={styles.scrollDown}
+          >
+            <Text style={styles.scrollDownText}>↓</Text>
+          </Pressable>
+        ) : null}
 
         {Platform.OS !== 'ios' && showMediaOptions && (
           <View style={styles.mediaOptionsOverlay}>
@@ -983,5 +1047,54 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  dayHeader: {
+    alignSelf: 'center',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginVertical: 6,
+  },
+  dayHeaderText: {
+    color: '#888',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  typingRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+  },
+  typingBubble: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  typingDots: {
+    color: '#FF7A1A',
+    fontSize: 14,
+    letterSpacing: 2,
+  },
+  scrollDown: {
+    position: 'absolute',
+    right: 16,
+    bottom: 76,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#2a2a2a',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#333',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 50,
+  },
+  scrollDownText: {
+    color: '#FF7A1A',
+    fontSize: 18,
+    fontWeight: '700',
   },
 });

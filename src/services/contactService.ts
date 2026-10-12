@@ -391,6 +391,8 @@ export const saveContact = (input: ContactInput): Promise<Buddy> =>
   contactService.saveContact(input);
 export const deleteContact = (userId: string): Promise<void> =>
   contactService.deleteContact(userId);
+export const blockContact = (userId: string, isBlocked: boolean): Promise<void> =>
+  contactService.blockContact(userId, isBlocked);
 export const syncRoster = (): Promise<Buddy[]> => contactService.syncRoster();
 export const syncPhoneContacts = (): Promise<{ uploaded: number; matched: number }> =>
   contactService.syncPhoneContacts();

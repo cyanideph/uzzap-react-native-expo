@@ -119,6 +119,9 @@ export default function ContactsScreen(): React.ReactElement {
             return (
               <Pressable
                 onPress={() => router.push({ pathname: '/chat/[id]', params: { id: item.userId } })}
+                onLongPress={() =>
+                  router.push({ pathname: '/user/[id]', params: { id: item.userId } })
+                }
                 accessibilityRole="button"
                 accessibilityLabel={`${item.displayName}, ${status}${unread > 0 ? `, ${unread} unread` : ''}`}
                 style={({ pressed }) => [

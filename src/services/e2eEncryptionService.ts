@@ -283,13 +283,13 @@ export class E2EEncryptionService {
     ciphertext: { type: number; body: Uint8Array },
   ): Promise<string> {
     const address = new SignalProtocolAddress(senderAddress, 1);
-    const cipher = new SessionCipher(this.keyStore, address);
+    const cipher = new SessionCipher(this.keyStore as any, address);
 
     let plaintextBytes: Uint8Array;
     if (ciphertext.type === 3) {
-      plaintextBytes = await cipher.decryptPreKeyWhisperMessage(ciphertext.body);
+      plaintextBytes = new Uint8Array(await cipher.decryptPreKeyWhisperMessage(ciphertext.body));
     } else {
-      plaintextBytes = await cipher.decryptWhisperMessage(ciphertext.body);
+      plaintextBytes = new Uint8Array(await cipher.decryptWhisperMessage(ciphertext.body));
     }
 
     return new TextDecoder().decode(plaintextBytes);

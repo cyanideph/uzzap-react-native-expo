@@ -113,8 +113,8 @@ export default function SettingsScreen(): React.ReactElement {
     });
     // Apply to wsClient
     wsClient.configure({
-      host: proxyHost,
-      port,
+      hosts: [proxyHost],
+      ports: [port],
     });
     setShowProxySettings(false);
   };

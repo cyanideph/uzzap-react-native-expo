@@ -14,7 +14,6 @@ import type {
   WsClientCallbacks,
   WsClientOptions,
   ConnectOptions,
-  WsClientListener,
   PendingMessage,
   OutboundMessageInput,
 } from './wsClient';
@@ -46,7 +45,7 @@ export interface WsClientWebOptions extends WsClientOptions {
 
 export type WsClientWebEvent = WsClientEvent | { type: 'message-failed'; pending: PendingMessage } | { type: 'disconnect'; reason?: string } | { type: 'connect'; host: string; port: number } | { type: 'auth-success'; mobile?: string } | { type: 'auth-failure'; code: string } | { type: 'log'; level: 'debug' | 'info' | 'warn' | 'error'; message: string } | { type: 'roster'; stanza: Stanza } | { type: 'chat-presence'; presence: ChatPresenceUpdate } | { type: 'chat-message'; message: InboundChatMessage };
 
-export type WsClientWebListener = WsClientListener;
+export type WsClientWebListener = (event: WsClientWebEvent) => void;
 
 export class WsClientWeb {
   private wsUrl: string = DEFAULT_WS_HOST;
@@ -579,7 +578,7 @@ export class WsClientWeb {
   private dispatch(event: WsClientWebEvent): void {
     for (const listener of this.listeners) {
       try {
-        listener(event as unknown as WsClientEvent);
+        listener(event);
       } catch {
         // ignore
       }
